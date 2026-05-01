@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>河流水质监控系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: #f0f2f5;
+            color: #333;
+        }
+
+        .header {
+            background: #1a6b3c;
+            color: white;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .nav {
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            padding: 0 32px;
+        }
+
+        .nav button {
+            padding: 14px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .nav button:hover {
+            color: #1a6b3c;
+        }
+
+        .nav button.active {
+            color: #1a6b3c;
+            border-bottom-color: #1a6b3c;
+            font-weight: 600;
+        }
+
+        .container {
+            padding: 24px 32px;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .card h2 {
+            font-size: 16px;
+            margin-bottom: 16px;
+            color: #1a6b3c;
+            border-left: 4px solid #1a6b3c;
+            padding-left: 10px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            border-color: #1a6b3c;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.85;
+        }
+
+        .btn-primary {
+            background: #1a6b3c;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #e53935;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
+            background: #f5f5f5;
+            padding: 10px 12px;
+            text-align: left;
+            color: #555;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        tr:hover td {
+            background: #fafafa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-danger {
+            background: #fde8e8;
+            color: #c0392b;
+        }
+
+        .badge-success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .badge-warning {
+            background: #fff8e1;
+            color: #f59e0b;
+        }
+
+        .alarm-row td {
+            background: #fff5f5;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 10px;
+            padding: 28px;
+            width: 780px;
+            max-width: 95vw;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal h3 {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: #1a6b3c;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: flex-end;
+            margin-bottom: 16px;
+        }
+
+        .filter-bar .form-group {
+            min-width: 140px;
+        }
+
+        #chart-box {
+            height: 320px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .stat-card .val {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1a6b3c;
+        }
+
+        .stat-card .lbl {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        .stat-card.alarm .val {
+            color: #e53935;
+        }
+
+        .msg {
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+        .msg-success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .msg-error {
+            background: #fde8e8;
+            color: #c0392b;
+        }
+
+        .record-row {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .record-row:first-child {
+            background: #fff;
+        }
+
+        .record-row:not(:first-child) {
+            background: #f9fdf9;
+        }
+
+        .row-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .row-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1a6b3c;
+        }
+
+        .row-remove {
+            border: none;
+            background: none;
+            color: #e53935;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 2px 6px;
+        }
+
+        .row-remove:hover {
+            text-decoration: underline;
+        }
+
+        /* ── 内联批量录入表格 ── */
+        .inline-entry-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            table-layout: fixed;
+        }
+
+        .inline-entry-table th {
+            background: #f0f7f3;
+            color: #1a6b3c;
+            font-weight: 600;
+            padding: 9px 6px;
+            text-align: center;
+            border: 1px solid #d8ede3;
+            white-space: nowrap;
+        }
+
+        .inline-entry-table td {
+            padding: 5px 4px;
+            border: 1px solid #eee;
+            vertical-align: middle;
+        }
+
+        .inline-entry-table tr:hover td {
+            background: #f9fdf9;
+        }
+
+        .inline-entry-table input,
+        .inline-entry-table select {
+            width: 100%;
+            padding: 6px 5px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 12px;
+            outline: none;
+            box-sizing: border-box;
+            background: #fff;
+        }
+
+        .inline-entry-table input:focus,
+        .inline-entry-table select:focus {
+            border-color: #1a6b3c;
+            background: #f0f7f3;
+        }
+
+        .inline-entry-table input.cell-error {
+            border-color: #e53935;
+            background: #fff5f5;
+        }
+
+        .inline-entry-table .row-seq {
+            text-align: center;
+            color: #aaa;
+            font-size: 12px;
+            width: 30px;
+        }
+
+        .inline-entry-table .del-cell {
+            text-align: center;
+            width: 36px;
+        }
+
+        .del-row-btn {
+            background: none;
+            border: none;
+            color: #ccc;
+            font-size: 16px;
+            cursor: pointer;
+            line-height: 1;
+            padding: 2px 4px;
+            border-radius: 3px;
+            transition: color 0.15s;
+        }
+
+        .del-row-btn:hover {
+            color: #e53935;
+        }
+
+        .inline-entry-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+        }
+
+        .inline-add-row-btn {
+            background: none;
+            border: 1px dashed #1a6b3c;
+            color: #1a6b3c;
+            border-radius: 6px;
+            padding: 6px 16px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .inline-add-row-btn:hover {
+            background: #f0f7f3;
+        }
+
+        .inline-entry-hint {
+            font-size: 12px;
+            color: #aaa;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>河流水质监控系统</h1>
+        <span id="current-time" style="font-size:13px;opacity:0.8;"></span>
+    </div>
+
+    <div class="nav">
+        <button class="active" onclick="showPage('dashboard', this)">总览</button>
+        <button onclick="showPage('records', this)">水质数据</button>
+        <button onclick="showPage('alarms', this)">报警记录</button>
+        <button onclick="showPage('points', this)">监测点管理</button>
+        <button onclick="showPage('thresholds', this)">阈值设置</button>
+        <button onclick="exitSystem()" style="margin-left:auto;color:#e53935;">退出系统</button>
+    </div>
+
+    <div class="container">
+
+        <!-- 总览页 -->
+        <div id="page-dashboard" class="page active">
+            <div class="stat-grid" id="stat-grid"></div>
+            <div class="card">
+                <h2>最近水质趋势</h2>
+                <div style="margin-bottom:12px;">
+                    <select id="chart-point" onchange="loadChart()"
+                        style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;"></select>
+                    <select id="chart-indicator" onchange="loadChart()"
+                        style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-left:8px;">
+                        <option value="ph">pH 值</option>
+                        <option value="chlorine">余氯</option>
+                        <option value="conductivity">电导率</option>
+                        <option value="orp">ORP</option>
+                        <option value="turbidity">浊度</option>
+                    </select>
+                </div>
+                <div id="chart-box"></div>
+            </div>
+        </div>
+
+        <!-- 水质数据页 -->
+        <div id="page-records" class="page">
+            <div class="card">
+                <h2>条件查询</h2>
+                <div class="filter-bar">
+                    <div class="form-group">
+                        <label>监测点</label>
+                        <select id="filter-point">
+                            <option value="">全部</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>开始日期</label>
+                        <input type="date" id="filter-date-from">
+                    </div>
+                    <div class="form-group">
+                        <label>结束日期</label>
+                        <input type="date" id="filter-date-to">
+                    </div>
+                    <div class="form-group">
+                        <label>余氯最小值 (mg/L)</label>
+                        <input type="number" id="filter-chlorine-min" step="0.01" placeholder="如 0.05">
+                    </div>
+                    <div class="form-group">
+                        <label>余氯最大值 (mg/L)</label>
+                        <input type="number" id="filter-chlorine-max" step="0.01" placeholder="如 0.3">
+                    </div>
+                    <div class="form-group">
+                        <label>电导率最小值 (μS/cm)</label>
+                        <input type="number" id="filter-conductivity-min" step="1" placeholder="如 0">
+                    </div>
+                    <div class="form-group">
+                        <label>电导率最大值 (μS/cm)</label>
+                        <input type="number" id="filter-conductivity-max" step="1" placeholder="如 1000">
+                    </div>
+                    <div class="form-group">
+                        <label>pH 最小值</label>
+                        <input type="number" id="filter-ph-min" step="0.1" placeholder="如 6.5">
+                    </div>
+                    <div class="form-group">
+                        <label>pH 最大值</label>
+                        <input type="number" id="filter-ph-max" step="0.1" placeholder="如 8.5">
+                    </div>
+                    <div class="form-group">
+                        <label>ORP 最小值 (mV)</label>
+                        <input type="number" id="filter-orp-min" step="1" placeholder="如 200">
+                    </div>
+                    <div class="form-group">
+                        <label>ORP 最大值 (mV)</label>
+                        <input type="number" id="filter-orp-max" step="1" placeholder="如 500">
+                    </div>
+                    <div class="form-group">
+                        <label>浊度最小值 (NTU)</label>
+                        <input type="number" id="filter-turbidity-min" step="0.1" placeholder="如 0">
+                    </div>
+                    <div class="form-group">
+                        <label>浊度最大值 (NTU)</label>
+                        <input type="number" id="filter-turbidity-max" step="0.1" placeholder="如 3.0">
+                    </div>
+                    <button class="btn btn-primary" onclick="loadRecords()">查询</button>
+                    <button class="btn btn-warning" onclick="clearFilters()">重置</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h2 style="margin:0;">批量录入数据</h2>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <span id="inline-entry-msg" style="font-size:13px;"></span>
+                        <button class="btn btn-warning btn-sm" onclick="clearInlineTable()">清空</button>
+                        <button class="btn btn-primary" onclick="submitInlineTable()">提交所有行</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x:auto;">
+                    <table class="inline-entry-table">
+                        <thead>
+                            <tr>
+                                <th style="width:30px;">#</th>
+                                <th style="width:120px;">监测点 *</th>
+                                <th style="width:148px;">采集时间</th>
+                                <th style="width:90px;">余氯 (mg/L)</th>
+                                <th style="width:100px;">电导率 (μS/cm)</th>
+                                <th style="width:80px;">pH 值</th>
+                                <th style="width:80px;">ORP (mV)</th>
+                                <th style="width:80px;">浊度 (NTU)</th>
+                                <th style="width:36px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="inline-entry-tbody"></tbody>
+                    </table>
+                </div>
+
+                <div class="inline-entry-footer">
+                    <button class="inline-add-row-btn" onclick="addInlineRow()">＋ 添加一行</button>
+                    <span class="inline-entry-hint">Tab 键可在单元格间快速跳转</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h2 style="margin:0;">数据列表</h2>
+                    <button class="btn btn-primary" onclick="openAddModal()">录入单行数据</button>
+                </div>
+                <div id="records-msg"></div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>监测点</th>
+                            <th>时间</th>
+                            <th>余氯</th>
+                            <th>电导率</th>
+                            <th>pH</th>
+                            <th>ORP</th>
+                            <th>浊度</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="records-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 报警页 -->
+        <div id="page-alarms" class="page">
+            <div class="card">
+                <div style="display:flex;gap:12px;margin-bottom:16px;">
+                    <select id="alarm-filter-point"
+                        style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+                        <option value="">全部监测点</option>
+                    </select>
+                    <select id="alarm-filter-indicator"
+                        style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+                        <option value="">全部指标</option>
+                        <option value="chlorine">余氯</option>
+                        <option value="conductivity">电导率</option>
+                        <option value="ph">pH</option>
+                        <option value="orp">ORP</option>
+                        <option value="turbidity">浊度</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadAlarms()">查询</button>
+                </div>
+                <h2>报警记录</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>记录ID</th>
+                            <th>指标</th>
+                            <th>实测值</th>
+                            <th>阈值</th>
+                            <th>类型</th>
+                            <th>报警时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="alarms-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 监测点管理页 -->
+        <div id="page-points" class="page">
+            <div class="card">
+                <h2>添加监测点</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>名称 *</label>
+                        <input type="text" id="point-name" placeholder="如 监测点1-上游">
+                    </div>
+                    <div class="form-group">
+                        <label>纬度</label>
+                        <input type="number" id="point-lat" step="0.0001" placeholder="如 31.2304">
+                    </div>
+                    <div class="form-group">
+                        <label>经度</label>
+                        <input type="number" id="point-lng" step="0.0001" placeholder="如 121.4737">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label>备注</label>
+                    <input type="text" id="point-desc" placeholder="可选">
+                </div>
+                <div id="points-msg"></div>
+                <button class="btn btn-primary" onclick="createPoint()">添加</button>
+            </div>
+            <div class="card">
+                <h2>监测点列表</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>纬度</th>
+                            <th>经度</th>
+                            <th>备注</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="points-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 阈值设置页 -->
+        <div id="page-thresholds" class="page">
+            <div class="card">
+                <h2>超标阈值配置</h2>
+                <div id="thresholds-msg"></div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>指标</th>
+                            <th>最小值</th>
+                            <th>最大值</th>
+                            <th>更新时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="thresholds-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 录入/编辑 数据弹窗 -->
+    <div class="modal-overlay" id="record-modal">
+        <div class="modal">
+            <h3 id="modal-title">录入水质数据</h3>
+
+            <div id="record-rows-container"></div>
+
+            <div style="margin:4px 0 8px;">
+                <button id="add-row-btn" class="btn btn-warning" onclick="addRecordRow()" style="display:none;">
+                    + 添加下一组
+                </button>
+            </div>
+
+            <div id="modal-msg"></div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeModal()" style="background:#f0f0f0;">取消</button>
+                <button class="btn btn-primary" onclick="submitRecord()">全部保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const INDICATORS = {
+            chlorine: '余氯', conductivity: '电导率',
+            ph: 'pH', orp: 'ORP', turbidity: '浊度'
+        };
+
+        let editingId = null;
+        let rowCount = 0;
+        let pointsCache = [];
+        let chart = null;
+
+        // ── 工具 ──────────────────────────────────────────────
+        function showPage(name, btn) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+            document.getElementById('page-' + name).classList.add('active');
+            if (btn) btn.classList.add('active');
+
+            if (name === 'dashboard') { loadStats(); loadChart(); }
+            if (name === 'records') loadRecords();
+            if (name === 'alarms') loadAlarms();
+            if (name === 'points') loadPoints();
+            if (name === 'thresholds') loadThresholds();
+        }
+
+        function showMsg(elId, text, type = 'success') {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            el.innerHTML = `<div class="msg msg-${type}">${text}</div>`;
+            setTimeout(() => el.innerHTML = '', 3500);
+        }
+
+        function formatIndicator(key) {
+            return INDICATORS[key] || key;
+        }
+
+        async function api(url, method = 'GET', body = null) {
+            const opts = { method, headers: { 'Content-Type': 'application/json' } };
+            if (body) opts.body = JSON.stringify(body);
+            const res = await fetch(url, opts);
+            return res.json();
+        }
+
+        // ── 时钟 ──────────────────────────────────────────────
+        function updateClock() {
+            document.getElementById('current-time').textContent =
+                new Date().toLocaleString('zh-CN');
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // ── 总览 ──────────────────────────────────────────────
+        async function loadStats() {
+            const [records, alarms, points] = await Promise.all([
+                api('/api/records'), api('/api/alarms'), api('/api/points')
+            ]);
+            document.getElementById('stat-grid').innerHTML = `
+    <div class="stat-card"><div class="val">${points.length}</div><div class="lbl">监测点数量</div></div>
+    <div class="stat-card"><div class="val">${records.length}</div><div class="lbl">数据总条数</div></div>
+    <div class="stat-card alarm"><div class="val">${alarms.length}</div><div class="lbl">报警总次数</div></div>
+    <div class="stat-card alarm"><div class="val">${alarms.filter(a => a.alarm_type === 'high').length}</div><div class="lbl">超上限次数</div></div>
+    <div class="stat-card alarm"><div class="val">${alarms.filter(a => a.alarm_type === 'low').length}</div><div class="lbl">低于下限次数</div></div>
+  `;
+            const sel = document.getElementById('chart-point');
+            sel.innerHTML = points.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            pointsCache = points;
+            // 刷新内联录入表格中已有行的监测点下拉选项
+            document.querySelectorAll('#inline-entry-tbody select').forEach(sel => {
+                const prev = sel.value;
+                sel.innerHTML = getInlinePointOptions();
+                if (prev) sel.value = prev;
+            });
+            if (points.length) loadChart();
+        }
+
+        async function loadChart() {
+            const pointId = document.getElementById('chart-point').value;
+            const indicator = document.getElementById('chart-indicator').value;
+            if (!pointId) return;
+
+            const [records, thresholds] = await Promise.all([
+                api(`/api/records?point_id=${pointId}`),
+                api('/api/thresholds')
+            ]);
+            if (!Array.isArray(records)) return;
+            const sorted = records.slice().reverse().slice(-30);
+            if (!chart) chart = echarts.init(document.getElementById('chart-box'));
+
+            const t = thresholds.find(t => t.indicator === indicator);
+            const markLines = t ? {
+                data: [
+                    { yAxis: t.max_val, name: '上限', lineStyle: { color: '#e53935', type: 'dashed' } },
+                    { yAxis: t.min_val, name: '下限', lineStyle: { color: '#f59e0b', type: 'dashed' } }
+                ]
+            } : {};
+
+            chart.setOption({
+                tooltip: { trigger: 'axis' },
+                xAxis: { type: 'category', data: sorted.map(r => r.timestamp.slice(5, 16)) },
+                yAxis: { type: 'value', name: formatIndicator(indicator) },
+                series: [{
+                    type: 'line', smooth: true,
+                    data: sorted.map(r => r[indicator]),
+                    markLine: markLines,
+                    lineStyle: { color: '#1a6b3c' },
+                    itemStyle: { color: '#1a6b3c' }
+                }]
+            });
+        }
+
+        // ── 水质数据 ───────────────────────────────────────────
+        async function loadRecords() {
+            const params = new URLSearchParams();
+            const v = id => document.getElementById(id)?.value;
+            if (v('filter-point')) params.set('point_id', v('filter-point'));
+            if (v('filter-date-from')) params.set('date_from', v('filter-date-from'));
+            if (v('filter-date-to')) params.set('date_to', v('filter-date-to'));
+            if (v('filter-chlorine-min')) params.set('chlorine_min', v('filter-chlorine-min'));
+            if (v('filter-chlorine-max')) params.set('chlorine_max', v('filter-chlorine-max'));
+            if (v('filter-conductivity-min')) params.set('conductivity_min', v('filter-conductivity-min'));
+            if (v('filter-conductivity-max')) params.set('conductivity_max', v('filter-conductivity-max'));
+            if (v('filter-ph-min')) params.set('ph_min', v('filter-ph-min'));
+            if (v('filter-ph-max')) params.set('ph_max', v('filter-ph-max'));
+            if (v('filter-orp-min')) params.set('orp_min', v('filter-orp-min'));
+            if (v('filter-orp-max')) params.set('orp_max', v('filter-orp-max'));
+            if (v('filter-turbidity-min')) params.set('turbidity_min', v('filter-turbidity-min'));
+            if (v('filter-turbidity-max')) params.set('turbidity_max', v('filter-turbidity-max'));
+
+            const [records, alarms, points] = await Promise.all([
+                api('/api/records?' + params),
+                api('/api/alarms'),
+                api('/api/points')
+            ]);
+
+            pointsCache = points;
+            const alarmIds = new Set(alarms.map(a => a.record_id));
+            const pointMap = Object.fromEntries(points.map(p => [p.id, p.name]));
+
+            const sel = document.getElementById('filter-point');
+            if (sel.options.length <= 1) {
+                points.forEach(p => sel.add(new Option(p.name, p.id)));
+            }
+
+            document.getElementById('records-tbody').innerHTML = records.map(r => {
+                const bad = alarmIds.has(r.id);
+                const badge = bad
+                    ? '<span class="badge badge-danger">超标</span>'
+                    : '<span class="badge badge-success">正常</span>';
+                return `<tr class="${bad ? 'alarm-row' : ''}">
+      <td>${r.id}</td>
+      <td>${pointMap[r.point_id] || r.point_id}</td>
+      <td>${r.timestamp}</td>
+      <td>${r.chlorine}</td>
+      <td>${r.conductivity}</td>
+      <td>${r.ph}</td>
+      <td>${r.orp}</td>
+      <td>${r.turbidity}</td>
+      <td>${badge}</td>
+      <td>
+        <button class="btn btn-warning btn-sm" onclick="openEditModal(${r.id})">修改</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteRecord(${r.id})" style="margin-left:4px;">删除</button>
+      </td>
+    </tr>`;
+            }).join('');
+        }
+
+        function clearFilters() {
+            ['filter-point', 'filter-date-from', 'filter-date-to',
+                'filter-chlorine-min', 'filter-chlorine-max',
+                'filter-conductivity-min', 'filter-conductivity-max',
+                'filter-ph-min', 'filter-ph-max',
+                'filter-orp-min', 'filter-orp-max',
+                'filter-turbidity-min', 'filter-turbidity-max']
+                .forEach(id => document.getElementById(id).value = '');
+            loadRecords();
+        }
+
+        // ── 弹窗：多组录入 ─────────────────────────────────────
+        function buildRowHTML(index, points, isFirst) {
+            const opts = points.map(p =>
+                `<option value="${p.id}">${p.name}</option>`).join('');
+            const now = new Date().toISOString().slice(0, 16);
+            return `
+    <div class="record-row" id="row-${index}">
+      <div class="row-header">
+        <span class="row-label">第 ${index + 1} 组数据</span>
+        ${!isFirst
+                    ? `<button class="row-remove" onclick="removeRow(${index})">移除本组</button>`
+                    : ''}
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>监测点 *</label>
+          <select id="row-${index}-point">${opts}</select>
+        </div>
+        <div class="form-group">
+          <label>采集时间</label>
+          <input type="datetime-local" id="row-${index}-timestamp" value="${now}">
+        </div>
+        <div class="form-group">
+          <label>余氯 (mg/L) *</label>
+          <input type="number" id="row-${index}-chlorine" step="0.001" placeholder="0.05 ~ 0.3">
+        </div>
+        <div class="form-group">
+          <label>电导率 (μS/cm) *</label>
+          <input type="number" id="row-${index}-conductivity" step="0.1" placeholder="0 ~ 1000">
+        </div>
+        <div class="form-group">
+          <label>pH 值 *</label>
+          <input type="number" id="row-${index}-ph" step="0.01" placeholder="6.5 ~ 8.5">
+        </div>
+        <div class="form-group">
+          <label>ORP (mV) *</label>
+          <input type="number" id="row-${index}-orp" step="0.1" placeholder="200 ~ 500">
+        </div>
+        <div class="form-group">
+          <label>浊度 (NTU) *</label>
+          <input type="number" id="row-${index}-turbidity" step="0.01" placeholder="0 ~ 3">
+        </div>
+      </div>
+    </div>`;
+        }
+
+        async function openAddModal() {
+            editingId = null;
+            rowCount = 0;
+            document.getElementById('modal-title').textContent = '录入水质数据';
+            document.getElementById('modal-msg').innerHTML = '';
+            document.getElementById('add-row-btn').style.display = 'none';
+
+            const points = pointsCache.length ? pointsCache : await api('/api/points');
+            pointsCache = points;
+
+            const container = document.getElementById('record-rows-container');
+            container.innerHTML = buildRowHTML(0, points, true);
+            rowCount = 1;
+
+            document.getElementById('add-row-btn').style.display = 'inline-block';
+            document.getElementById('record-modal').classList.add('show');
+        }
+
+        async function addRecordRow() {
+            const points = pointsCache.length ? pointsCache : await api('/api/points');
+            const container = document.getElementById('record-rows-container');
+            const div = document.createElement('div');
+            div.innerHTML = buildRowHTML(rowCount, points, false);
+            container.appendChild(div.firstElementChild);
+            document.getElementById(`row-${rowCount}-point`).focus();
+            rowCount++;
+        }
+
+        function removeRow(index) {
+            const el = document.getElementById(`row-${index}`);
+            if (el) el.remove();
+        }
+
+        async function openEditModal(id) {
+            editingId = id;
+            rowCount = 1;
+            document.getElementById('modal-title').textContent = '修改水质数据';
+            document.getElementById('modal-msg').innerHTML = '';
+            document.getElementById('add-row-btn').style.display = 'none';
+
+            const [r, points] = await Promise.all([
+                api(`/api/records/${id}`), api('/api/points')
+            ]);
+            pointsCache = points;
+
+            const container = document.getElementById('record-rows-container');
+            container.innerHTML = buildRowHTML(0, points, true);
+
+            document.getElementById('row-0-point').value = r.point_id;
+            document.getElementById('row-0-timestamp').value = r.timestamp.replace(' ', 'T');
+            document.getElementById('row-0-chlorine').value = r.chlorine;
+            document.getElementById('row-0-conductivity').value = r.conductivity;
+            document.getElementById('row-0-ph').value = r.ph;
+            document.getElementById('row-0-orp').value = r.orp;
+            document.getElementById('row-0-turbidity').value = r.turbidity;
+
+            document.getElementById('record-modal').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('record-modal').classList.remove('show');
+        }
+
+        async function submitRecord() {
+            const rows = document.querySelectorAll('.record-row');
+            if (!rows.length) {
+                showMsg('modal-msg', '没有可提交的数据', 'error');
+                return;
+            }
+
+            const dataList = [];
+            let groupNum = 0;
+            for (const row of rows) {
+                groupNum++;
+                const idx = row.id.replace('row-', '');
+                const val = f => document.getElementById(`row-${idx}-${f}`)?.value;
+
+                const chlorine = parseFloat(val('chlorine'));
+                const conductivity = parseFloat(val('conductivity'));
+                const ph = parseFloat(val('ph'));
+                const orp = parseFloat(val('orp'));
+                const turbidity = parseFloat(val('turbidity'));
+                const point_id = parseInt(val('point'));
+                const ts = val('timestamp');
+
+                if ([chlorine, conductivity, ph, orp, turbidity].some(isNaN)) {
+                    showMsg('modal-msg', `第 ${groupNum} 组数据有未填项，请检查`, 'error');
+                    return;
+                }
+
+                dataList.push({
+                    point_id,
+                    timestamp: ts ? ts.replace('T', ' ') + ':00' : null,
+                    chlorine, conductivity, ph, orp, turbidity
+                });
+            }
+
+            let res;
+            if (editingId) {
+                res = await api(`/api/records/${editingId}`, 'PUT', dataList[0]);
+                if (res.error) { showMsg('modal-msg', res.error, 'error'); return; }
+            } else {
+                res = await api('/api/records/batch', 'POST', dataList);
+                if (res.error) { showMsg('modal-msg', res.error, 'error'); return; }
+            }
+
+            closeModal();
+            loadRecords();
+            showMsg('records-msg',
+                editingId ? '修改成功' : `成功保存 ${res.saved} 条数据`
+            );
+        }
+
+        // ── 内联批量录入表格 ───────────────────────────────────
+        let inlineRowCount = 0;
+
+        function getInlinePointOptions() {
+            return pointsCache.map(p =>
+                `<option value="${p.id}">${p.name}</option>`
+            ).join('');
+        }
+
+        function buildInlineRow(idx) {
+            const now = new Date().toISOString().slice(0, 16);
+            const opts = getInlinePointOptions();
+            return `<tr id="irow-${idx}">
+                <td class="row-seq">${idx + 1}</td>
+                <td><select id="ir-${idx}-point">${opts}</select></td>
+                <td><input type="datetime-local" id="ir-${idx}-ts" value="${now}"></td>
+                <td><input type="number" id="ir-${idx}-chlorine"     step="0.001" placeholder="0.05~0.3"></td>
+                <td><input type="number" id="ir-${idx}-conductivity" step="0.1"   placeholder="0~1000"></td>
+                <td><input type="number" id="ir-${idx}-ph"           step="0.01"  placeholder="6.5~8.5"></td>
+                <td><input type="number" id="ir-${idx}-orp"          step="0.1"   placeholder="200~500"></td>
+                <td><input type="number" id="ir-${idx}-turbidity"    step="0.01"  placeholder="0~3"></td>
+                <td class="del-cell">
+                    <button class="del-row-btn" onclick="removeInlineRow(${idx})" title="删除本行">✕</button>
+                </td>
+            </tr>`;
+        }
+
+        function addInlineRow() {
+            // 如果监测点还没加载，先提示
+            if (!pointsCache.length) {
+                setInlineMsg('请先切换到总览页或等待监测点加载', 'error');
+                return;
+            }
+            const tbody = document.getElementById('inline-entry-tbody');
+            const tr = document.createElement('tr');
+            tr.outerHTML; // placeholder
+            tbody.insertAdjacentHTML('beforeend', buildInlineRow(inlineRowCount));
+
+            // Tab 到下一行第一个输入框：在最后一个单元格按 Tab 时自动添加行
+            const lastInput = document.getElementById(`ir-${inlineRowCount}-turbidity`);
+            lastInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Tab' && !e.shiftKey) {
+                    e.preventDefault();
+                    addInlineRow();
+                    // 聚焦新行的监测点选择框
+                    const next = document.getElementById(`ir-${inlineRowCount - 1}-point`);
+                    if (next) next.focus();
+                }
+            });
+
+            // 聚焦新行的余氯输入框（监测点和时间通常沿用，直接跳到数值区）
+            setTimeout(() => {
+                const first = document.getElementById(`ir-${inlineRowCount}-chlorine`);
+                if (first) first.focus();
+            }, 30);
+
+            inlineRowCount++;
+            updateInlineSeq();
+        }
+
+        function removeInlineRow(idx) {
+            const el = document.getElementById(`irow-${idx}`);
+            if (el) el.remove();
+            updateInlineSeq();
+        }
+
+        function updateInlineSeq() {
+            // 重新给序号列编号
+            const rows = document.querySelectorAll('#inline-entry-tbody tr');
+            rows.forEach((tr, i) => {
+                const seq = tr.querySelector('.row-seq');
+                if (seq) seq.textContent = i + 1;
+            });
+        }
+
+        function clearInlineTable() {
+            document.getElementById('inline-entry-tbody').innerHTML = '';
+            inlineRowCount = 0;
+            setInlineMsg('');
+            addInlineRow(); // 默认保留一行
+        }
+
+        function setInlineMsg(text, type = 'success') {
+            const el = document.getElementById('inline-entry-msg');
+            if (!text) { el.textContent = ''; return; }
+            el.style.color = type === 'error' ? '#e53935' : '#2e7d32';
+            el.textContent = text;
+            setTimeout(() => el.textContent = '', 4000);
+        }
+
+        async function submitInlineTable() {
+            const rows = document.querySelectorAll('#inline-entry-tbody tr');
+            if (!rows.length) {
+                setInlineMsg('表格中没有数据行', 'error');
+                return;
+            }
+
+            const dataList = [];
+            let hasError = false;
+
+            rows.forEach((tr, rowIdx) => {
+                // 通过 tr id 取出原始 idx
+                const idx = tr.id.replace('irow-', '');
+                const g = field => document.getElementById(`ir-${idx}-${field}`)?.value;
+
+                const chlorine = parseFloat(g('chlorine'));
+                const conductivity = parseFloat(g('conductivity'));
+                const ph = parseFloat(g('ph'));
+                const orp = parseFloat(g('orp'));
+                const turbidity = parseFloat(g('turbidity'));
+                const point_id = parseInt(g('point'));
+                const ts = g('ts');
+
+                // 高亮空值单元格
+                ['chlorine', 'conductivity', 'ph', 'orp', 'turbidity'].forEach(f => {
+                    const inp = document.getElementById(`ir-${idx}-${f}`);
+                    if (inp) inp.classList.toggle('cell-error', isNaN(parseFloat(inp.value)));
+                });
+
+                if ([chlorine, conductivity, ph, orp, turbidity].some(isNaN)) {
+                    hasError = true;
+                    return;
+                }
+
+                dataList.push({
+                    point_id,
+                    timestamp: ts ? ts.replace('T', ' ') + ':00' : null,
+                    chlorine, conductivity, ph, orp, turbidity
+                });
+            });
+
+            if (hasError) {
+                setInlineMsg(`有未填写的必填项（红色高亮），请补充后重新提交`, 'error');
+                return;
+            }
+
+            const res = await api('/api/records/batch', 'POST', dataList);
+            if (res.error) {
+                setInlineMsg(res.error, 'error');
+                return;
+            }
+
+            setInlineMsg(`✓ 成功写入 ${res.saved} 条数据`);
+            // 清空表格，保留一行空行
+            document.getElementById('inline-entry-tbody').innerHTML = '';
+            inlineRowCount = 0;
+            addInlineRow();
+            loadRecords();
+        }
+
+        // 页面加载时初始化内联表格
+        window.addEventListener('load', () => {
+            // 等待监测点缓存加载后再初始化第一行
+            const tryInit = setInterval(() => {
+                if (pointsCache.length) {
+                    clearInterval(tryInit);
+                    addInlineRow();
+                }
+            }, 300);
+            // 最多等 5 秒，之后用空选项初始化
+            setTimeout(() => {
+                clearInterval(tryInit);
+                if (!document.querySelector('#inline-entry-tbody tr')) addInlineRow();
+            }, 5000);
+        });
+
+
+        async function deleteRecord(id) {
+            if (!confirm(`确认删除记录 ID=${id}？此操作不可恢复。`)) return;
+            await api(`/api/records/${id}`, 'DELETE');
+            loadRecords();
+            showMsg('records-msg', `记录 ${id} 已删除`);
+        }
+
+        // ── 报警 ──────────────────────────────────────────────
+        async function loadAlarms() {
+            const params = new URLSearchParams();
+            const pointId = document.getElementById('alarm-filter-point').value;
+            const indicator = document.getElementById('alarm-filter-indicator').value;
+            if (pointId) params.set('point_id', pointId);
+            if (indicator) params.set('indicator', indicator);
+
+            const [alarms, points] = await Promise.all([
+                api('/api/alarms?' + params), api('/api/points')
+            ]);
+
+            const sel = document.getElementById('alarm-filter-point');
+            if (sel.options.length <= 1) {
+                points.forEach(p => sel.add(new Option(p.name, p.id)));
+            }
+
+            document.getElementById('alarms-tbody').innerHTML = alarms.map(a => `
+    <tr>
+      <td>${a.id}</td>
+      <td>${a.record_id}</td>
+      <td>${formatIndicator(a.indicator)}</td>
+      <td><strong style="color:#e53935;">${a.actual_val}</strong></td>
+      <td>${a.threshold_val}</td>
+      <td><span class="badge ${a.alarm_type === 'high' ? 'badge-danger' : 'badge-warning'}">
+        ${a.alarm_type === 'high' ? '超上限' : '低于下限'}
+      </span></td>
+      <td>${a.created_at}</td>
+    </tr>
+  `).join('');
+        }
+
+        // ── 监测点 ────────────────────────────────────────────
+        async function loadPoints() {
+            const points = await api('/api/points');
+            pointsCache = points;
+            document.getElementById('points-tbody').innerHTML = points.map(p => `
+    <tr>
+      <td>${p.id}</td>
+      <td>${p.name}</td>
+      <td>${p.latitude ?? '-'}</td>
+      <td>${p.longitude ?? '-'}</td>
+      <td>${p.description ?? '-'}</td>
+      <td>${p.created_at}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deletePoint(${p.id})">删除</button></td>
+    </tr>
+  `).join('');
+        }
+
+        async function createPoint() {
+            const name = document.getElementById('point-name').value.trim();
+            if (!name) { showMsg('points-msg', '请填写监测点名称', 'error'); return; }
+            const body = {
+                name,
+                latitude: parseFloat(document.getElementById('point-lat').value) || null,
+                longitude: parseFloat(document.getElementById('point-lng').value) || null,
+                description: document.getElementById('point-desc').value.trim() || null,
+            };
+            const res = await api('/api/points', 'POST', body);
+            if (res.error) { showMsg('points-msg', res.error, 'error'); return; }
+            showMsg('points-msg', `监测点「${res.name}」添加成功`);
+            ['point-name', 'point-lat', 'point-lng', 'point-desc']
+                .forEach(id => document.getElementById(id).value = '');
+            loadPoints();
+        }
+
+        async function deletePoint(id) {
+            if (!confirm(`确认删除监测点 ID=${id}？`)) return;
+            await api(`/api/points/${id}`, 'DELETE');
+            loadPoints();
+        }
+
+        // ── 阈值 ──────────────────────────────────────────────
+        async function loadThresholds() {
+            const thresholds = await api('/api/thresholds');
+            document.getElementById('thresholds-tbody').innerHTML = thresholds.map(t => `
+    <tr>
+      <td>${formatIndicator(t.indicator)}</td>
+      <td><input type="number" id="t-min-${t.indicator}" value="${t.min_val}" step="0.001"
+          style="width:90px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;"></td>
+      <td><input type="number" id="t-max-${t.indicator}" value="${t.max_val}" step="0.001"
+          style="width:90px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;"></td>
+      <td>${t.updated_at}</td>
+      <td><button class="btn btn-primary btn-sm" onclick="saveThreshold('${t.indicator}')">保存</button></td>
+    </tr>
+  `).join('');
+        }
+
+        async function saveThreshold(indicator) {
+            const min_val = parseFloat(document.getElementById(`t-min-${indicator}`).value);
+            const max_val = parseFloat(document.getElementById(`t-max-${indicator}`).value);
+            if (isNaN(min_val) || isNaN(max_val)) {
+                showMsg('thresholds-msg', '请填写有效数值', 'error'); return;
+            }
+            if (min_val >= max_val) {
+                showMsg('thresholds-msg', '最小值必须小于最大值', 'error'); return;
+            }
+            await api(`/api/thresholds/${indicator}`, 'PUT', { min_val, max_val });
+            showMsg('thresholds-msg', `${formatIndicator(indicator)} 阈值已更新`);
+            loadThresholds();
+        }
+
+        // ── 退出 ──────────────────────────────────────────────
+        function exitSystem() {
+            if (confirm('确认退出系统并关闭服务器？')) {
+                fetch('/api/shutdown', { method: 'POST' })
+                    .then(() => {
+                        document.body.innerHTML =
+                            '<div style="text-align:center;padding:80px;font-size:18px;color:#666;">系统已关闭，请关闭此页面。</div>';
+                    })
+                    .catch(() => { });
+            }
+        }
+
+        // ── 初始化 ────────────────────────────────────────────
+        loadStats();
+    </script>
+</body>
+
+</html>
