@@ -113,7 +113,7 @@ cd water-quality-monitor
 ```powershell
 # Windows PowerShell
 python -m venv venv
-.\venv\Scripts\activate
+.\venv\Scripts\Activate.ps1
 ```
 
 ```bash
@@ -122,11 +122,27 @@ python3 -m venv venv
 source venv/bin/activate
 ```
 
+> ⚠️ **必须确认虚拟环境已激活**
+>
+> 激活成功后，命令行前缀会出现 `(venv)` 字样，如：
+> ```
+> (venv) PS D:\xxxxx\xxxxx\water-quality-monitor>
+> ```
+> 如果没有看到 `(venv)`，说明虚拟环境**未激活**，后续所有 `pip install` 和 `flask` 命令都会作用在系统 Python 上，导致 `No module named 'flask_migrate'` 等报错。请重新执行激活命令后再继续。
+
 ### 3. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
+
+安装完成后可执行以下命令确认关键包已就位：
+
+```bash
+pip show flask flask-sqlalchemy flask-migrate
+```
+
+三个包均有输出则说明安装正常。
 
 ### 4. 配置环境变量
 
@@ -148,7 +164,21 @@ cp .env.example .env
 flask db upgrade
 ```
 
-执行后将在 `instance/` 目录下自动创建 `water.db`，并初始化五项默认阈值。
+> ⚠️ **若提示 `unable to open database file`**
+>
+> 这是因为数据库所在的 `instance/` 目录不存在。Git 不会上传空文件夹，在新环境克隆后需手动创建：
+>
+> ```powershell
+> # Windows PowerShell
+> New-Item -ItemType Directory -Path instance
+> ```
+>
+> ```bash
+> # macOS / Linux
+> mkdir instance
+> ```
+>
+> 创建后重新执行 `flask db upgrade` 即可。执行成功后将在 `instance/` 目录下自动生成 `water.db`，并初始化五项默认阈值。
 
 ### 6. 启动服务
 
@@ -259,5 +289,6 @@ flask run
 ## 注意事项
 
 - 数据库文件 `instance/water.db` 不含在仓库中，首次运行 `flask db upgrade` 自动创建
+- `instance/` 目录本身也不含在仓库中（空目录不被 Git 追踪），克隆后需手动创建，见第 5 步说明
 - `.env` 文件不含在仓库中，请根据 `.env.example` 自行创建并修改 `SECRET_KEY`
 - 本项目为本地开发环境，不适用于直接生产部署

@@ -8,6 +8,8 @@ from flask_migrate import Migrate
 
 def create_app():
     app = Flask(__name__)
+    db_path = app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
     app.config.from_object(Config)
 
     db.init_app(app)
