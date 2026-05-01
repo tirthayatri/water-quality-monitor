@@ -1,5 +1,10 @@
 # 河流水质监控数据管理系统
 
+![python](https://img.shields.io/badge/python-3.12+-grey)
+![flask](https://img.shields.io/badge/flask-3.x-blue)
+![database](https://img.shields.io/badge/database-SQLite-003B57)
+![license](https://img.shields.io/badge/license-MIT-brightgreen)
+
 > 一个基于 Flask + SQLAlchemy + SQLite 的本地化河流水质监测数据管理平台，支持多监测点管理、水质数据录入与查询、超标自动报警等核心功能。
 
 ---
