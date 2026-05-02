@@ -1,9 +1,9 @@
 # 河流水质监控数据管理系统
 
-![python](https://img.shields.io/badge/python-3.12+-grey)
-![flask](https://img.shields.io/badge/flask-3.x-blue)
-![database](https://img.shields.io/badge/database-SQLite-003B57)
-![license](https://img.shields.io/badge/license-MIT-brightgreen)
+[![python](https://img.shields.io/badge/python-3.12+-grey)](https://www.python.org/)
+[![flask](https://img.shields.io/badge/flask-3.x-blue)](https://flask.palletsprojects.com/)
+[![database](https://img.shields.io/badge/database-SQLite-003B57)](https://www.sqlite.org/)
+[![license](https://img.shields.io/badge/license-MIT-brightgreen)](https://opensource.org/licenses/MIT)
 
 > 一个基于 Flask + SQLAlchemy + SQLite 的本地化河流水质监测数据管理平台，支持多监测点管理、水质数据录入与查询、超标自动报警等核心功能。
 
@@ -109,7 +109,14 @@ id, indicator (unique), min_val, max_val, updated_at
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/你的用户名/water-quality-monitor.git
+# HTTPS
+git clone https://github.com/tirthayatri/water-quality-monitor.git
+cd water-quality-monitor
+```
+
+```bash
+# SSH
+git clone git@github.com:tirthayatri/water-quality-monitor.git
 cd water-quality-monitor
 ```
 
@@ -133,7 +140,7 @@ source venv/bin/activate
 > ```
 > (venv) PS D:\xxxxx\xxxxx\water-quality-monitor>
 > ```
-> 如果没有看到 `(venv)`，说明虚拟环境**未激活**，后续所有 `pip install` 和 `flask` 命令都会作用在系统 Python 上，导致 `No module named 'flask_migrate'` 等报错。请重新执行激活命令后再继续。
+> 如果没有看到 `(venv)`，说明虚拟环境**未激活**，后续所有 `pip install` 和 `flask` 命令都会作用在系统 Python 上，导致 `No module named 'flask_migrate'` 等报错
 
 ### 3. 安装依赖
 
@@ -147,7 +154,7 @@ pip install -r requirements.txt
 pip show flask flask-sqlalchemy flask-migrate
 ```
 
-三个包均有输出则说明安装正常。
+Flask/Flask-SQLAlchemy/Flask-Migrate三个包均有输出则说明安装正常
 
 ### 4. 配置环境变量
 
@@ -163,29 +170,31 @@ cp .env.example .env
 
 按需修改 `.env` 中的 `SECRET_KEY`。
 
-### 5. 初始化数据库
+### 5. 创建 instance 目录
+
+ 在新环境克隆后需手动创建数据库所在的 `instance/` 目录：
+
+ ```powershell
+ # Windows PowerShell
+ New-Item -ItemType Directory -Path instance
+ ```
+
+ ```bash
+ # macOS / Linux
+ mkdir instance
+ ```
+
+ 创建后重新执行 `flask db upgrade` 即可。
+
+### 6. 初始化数据库
 
 ```bash
 flask db upgrade
 ```
 
-> ⚠️ **若提示 `unable to open database file`**
->
-> 这是因为数据库所在的 `instance/` 目录不存在。Git 不会上传空文件夹，在新环境克隆后需手动创建：
->
-> ```powershell
-> # Windows PowerShell
-> New-Item -ItemType Directory -Path instance
-> ```
->
-> ```bash
-> # macOS / Linux
-> mkdir instance
-> ```
->
-> 创建后重新执行 `flask db upgrade` 即可。执行成功后将在 `instance/` 目录下自动生成 `water.db`，并初始化五项默认阈值。
+执行成功后将在 `instance/` 目录下生成 `water.db`，并初始化默认阈值
 
-### 6. 启动服务
+### 7. 启动服务
 
 ```bash
 flask run
@@ -212,7 +221,7 @@ flask run
   "name": "上游监测站A",
   "latitude": 30.5728,
   "longitude": 104.0668,
-  "description": "成都市上游主干道监测点"
+  "description": "H市上游主干道监测点"
 }
 ```
 
@@ -293,7 +302,7 @@ flask run
 
 ## 注意事项
 
-- 数据库文件 `instance/water.db` 不含在仓库中，首次运行 `flask db upgrade` 自动创建
+- 数据库文件 `instance/water.db` 不含在仓库中，首次运行 `flask db upgrade` 时自动创建
 - `instance/` 目录本身也不含在仓库中（空目录不被 Git 追踪），克隆后需手动创建，见第 5 步说明
 - `.env` 文件不含在仓库中，请根据 `.env.example` 自行创建并修改 `SECRET_KEY`
 - 本项目为本地开发环境，不适用于直接生产部署

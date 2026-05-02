@@ -9,8 +9,6 @@ from flask_migrate import Migrate
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-
-    # 确保数据库所在目录存在（Git 不追踪空文件夹，新环境克隆后需自动创建）
     instance_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance')
     os.makedirs(instance_path, exist_ok=True)
 
@@ -44,20 +42,20 @@ def create_app():
 
 
 def seed_thresholds():
-    from sqlalchemy import inspect
-    inspector = inspect(db.engine)
-    if 'thresholds' not in inspector.get_table_names():
-        return  # 表不存在时直接跳过
-    if Threshold.query.count() == 0:
-        defaults = [
-            Threshold(indicator='chlorine',     min_val=0.05, max_val=0.3),
-            Threshold(indicator='conductivity', min_val=0.0,  max_val=1000.0),
-            Threshold(indicator='ph',           min_val=6.5,  max_val=8.5),
-            Threshold(indicator='orp',          min_val=200.0, max_val=500.0),
-            Threshold(indicator='turbidity',    min_val=0.0,  max_val=3.0),
-        ]
-        db.session.add_all(defaults)
-        db.session.commit()
+    """写入默认阈值。若迁移尚未执行（表不存在），静默跳过而不抛出异常。"""
+    try:
+        if Threshold.query.count() == 0:
+            defaults = [
+                Threshold(indicator='chlorine',     min_val=0.05, max_val=0.3),
+                Threshold(indicator='conductivity', min_val=0.0,  max_val=1000.0),
+                Threshold(indicator='ph',           min_val=6.5,  max_val=8.5),
+                Threshold(indicator='orp',          min_val=200.0, max_val=500.0),
+                Threshold(indicator='turbidity',    min_val=0.0,  max_val=3.0),
+            ]
+            db.session.add_all(defaults)
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 if __name__ == '__main__':

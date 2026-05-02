@@ -1,4 +1,6 @@
 from flask import Blueprint, request, jsonify
+from extensions import db
+from models import Threshold
 from services import record_service, alarm_service
 
 bp = Blueprint('records', __name__)
@@ -62,6 +64,7 @@ def delete_record(record_id):
     result = record_service.delete_record(record_id)
     return jsonify(result)
 
+
 @bp.route('/api/records/batch', methods=['POST'])
 def create_records_batch():
     data_list = request.get_json()
@@ -69,13 +72,23 @@ def create_records_batch():
         return jsonify({'error': '请求体必须是数组'}), 400
 
     required = ['point_id', 'chlorine', 'conductivity', 'ph', 'orp', 'turbidity']
-    results = []
+
     for i, data in enumerate(data_list):
         for field in required:
             if field not in data:
                 return jsonify({'error': f'第 {i+1} 条数据缺少字段: {field}'}), 400
-        record = record_service.create_record(data)
-        alarm_service.check_and_log_alarms(record)
-        results.append(record.to_dict())
+
+    thresholds = Threshold.query.all()
+
+    try:
+        results = []
+        for data in data_list:
+            record = record_service.create_record(data)
+            alarm_service.check_and_log_alarms(record, thresholds)
+            results.append(record.to_dict())
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'批量写入失败，已全部回滚：{str(e)}'}), 500
 
     return jsonify({'saved': len(results), 'records': results}), 201
