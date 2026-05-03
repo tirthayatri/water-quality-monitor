@@ -772,7 +772,11 @@
         function showMsg(elId, text, type = 'success') {
             const el = document.getElementById(elId);
             if (!el) return;
-            el.innerHTML = `<div class="msg msg-${type}">${text}</div>`;
+            const div = document.createElement('div');
+            div.className = `msg msg-${type}`;
+            div.textContent = text;
+            el.innerHTML = '';
+            el.appendChild(div);
             setTimeout(() => el.innerHTML = '', 3500);
         }
 
@@ -797,20 +801,19 @@
 
         // ── 总览 ──────────────────────────────────────────────
         async function loadStats() {
-            const [records, alarms, points] = await Promise.all([
-                api('/api/records'), api('/api/alarms'), api('/api/points')
+            const [stats, points] = await Promise.all([
+                api('/api/stats'), api('/api/points')
             ]);
             document.getElementById('stat-grid').innerHTML = `
-    <div class="stat-card"><div class="val">${points.length}</div><div class="lbl">监测点数量</div></div>
-    <div class="stat-card"><div class="val">${records.length}</div><div class="lbl">数据总条数</div></div>
-    <div class="stat-card alarm"><div class="val">${alarms.length}</div><div class="lbl">报警总次数</div></div>
-    <div class="stat-card alarm"><div class="val">${alarms.filter(a => a.alarm_type === 'high').length}</div><div class="lbl">超上限次数</div></div>
-    <div class="stat-card alarm"><div class="val">${alarms.filter(a => a.alarm_type === 'low').length}</div><div class="lbl">低于下限次数</div></div>
+    <div class="stat-card"><div class="val">${stats.points}</div><div class="lbl">监测点数量</div></div>
+    <div class="stat-card"><div class="val">${stats.records}</div><div class="lbl">数据总条数</div></div>
+    <div class="stat-card alarm"><div class="val">${stats.alarms}</div><div class="lbl">报警总次数</div></div>
+    <div class="stat-card alarm"><div class="val">${stats.high_alarms}</div><div class="lbl">超上限次数</div></div>
+    <div class="stat-card alarm"><div class="val">${stats.low_alarms}</div><div class="lbl">低于下限次数</div></div>
   `;
             const sel = document.getElementById('chart-point');
             sel.innerHTML = points.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
             pointsCache = points;
-            // 刷新内联录入表格中已有行的监测点下拉选项
             document.querySelectorAll('#inline-entry-tbody select').forEach(sel => {
                 const prev = sel.value;
                 sel.innerHTML = getInlinePointOptions();
@@ -872,14 +875,12 @@
             if (v('filter-turbidity-min')) params.set('turbidity_min', v('filter-turbidity-min'));
             if (v('filter-turbidity-max')) params.set('turbidity_max', v('filter-turbidity-max'));
 
-            const [records, alarms, points] = await Promise.all([
+            const [records, points] = await Promise.all([
                 api('/api/records?' + params),
-                api('/api/alarms'),
                 api('/api/points')
             ]);
 
             pointsCache = points;
-            const alarmIds = new Set(alarms.map(a => a.record_id));
             const pointMap = Object.fromEntries(points.map(p => [p.id, p.name]));
 
             const sel = document.getElementById('filter-point');
@@ -888,7 +889,7 @@
             }
 
             document.getElementById('records-tbody').innerHTML = records.map(r => {
-                const bad = alarmIds.has(r.id);
+                const bad = r.has_alarm;
                 const badge = bad
                     ? '<span class="badge badge-danger">超标</span>'
                     : '<span class="badge badge-success">正常</span>';
@@ -1114,8 +1115,6 @@
                 return;
             }
             const tbody = document.getElementById('inline-entry-tbody');
-            const tr = document.createElement('tr');
-            tr.outerHTML; // placeholder
             tbody.insertAdjacentHTML('beforeend', buildInlineRow(inlineRowCount));
 
             // Tab 到下一行第一个输入框：在最后一个单元格按 Tab 时自动添加行
@@ -1231,27 +1230,22 @@
         }
 
         // 页面加载时初始化内联表格
-        window.addEventListener('load', () => {
-            // 等待监测点缓存加载后再初始化第一行
-            const tryInit = setInterval(() => {
-                if (pointsCache.length) {
-                    clearInterval(tryInit);
-                    addInlineRow();
-                }
-            }, 300);
-            // 最多等 5 秒，之后用空选项初始化
-            setTimeout(() => {
-                clearInterval(tryInit);
-                if (!document.querySelector('#inline-entry-tbody tr')) addInlineRow();
-            }, 5000);
+        window.addEventListener('load', async () => {
+            if (!pointsCache.length) {
+                pointsCache = await api('/api/points');
+            }
+            if (!document.querySelector('#inline-entry-tbody tr')) {
+                addInlineRow();
+            }
         });
 
 
         async function deleteRecord(id) {
             if (!confirm(`确认删除记录 ID=${id}？此操作不可恢复。`)) return;
-            await api(`/api/records/${id}`, 'DELETE');
+            const res = await api(`/api/records/${id}`, 'DELETE');
+            if (res.error) { showMsg('records-msg', res.error, 'error'); return; }
             loadRecords();
-            showMsg('records-msg', `记录 ${id} 已删除`);
+            showMsg('records-msg', res.message || `记录 ${id} 已删除`);
         }
 
         // ── 报警 ──────────────────────────────────────────────
@@ -1322,8 +1316,10 @@
 
         async function deletePoint(id) {
             if (!confirm(`确认删除监测点 ID=${id}？`)) return;
-            await api(`/api/points/${id}`, 'DELETE');
+            const res = await api(`/api/points/${id}`, 'DELETE');
+            if (res.error) { showMsg('points-msg', res.error, 'error'); return; }
             loadPoints();
+            showMsg('points-msg', res.message || `监测点 ${id} 已删除`);
         }
 
         // ── 阈值 ──────────────────────────────────────────────

@@ -57,7 +57,8 @@ water/
 │   ├── points.py           # 监测点 API
 │   ├── records.py          # 水质记录 API
 │   ├── alarms.py           # 报警日志 API
-│   └── thresholds.py       # 阈值管理 API
+│   ├── thresholds.py       # 阈值管理 API
+│   └── stats.py            # 统计汇总 API
 │
 ├── templates/
 │   └── index.html          # 前端页面
@@ -251,6 +252,10 @@ flask run
 | `orp_min` / `orp_max` | ORP 范围 | |
 | `turbidity_min` / `turbidity_max` | 浊度范围 | |
 
+**响应字段说明：**
+
+列表接口每条记录额外包含 `has_alarm` 布尔字段，表示该条记录是否存在报警，由后端单次 IN 查询计算，前端无需再单独拉取全量报警数据。
+
 **新增记录请求体示例：**
 ```json
 {
@@ -263,6 +268,27 @@ flask run
   "timestamp": "2024-06-01 08:00:00"
 }
 ```
+
+---
+
+### 统计汇总 `/api/stats`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/stats` | 获取系统核心统计数据 |
+
+**响应示例：**
+```json
+{
+  "points":      3,
+  "records":     120,
+  "alarms":      15,
+  "high_alarms": 10,
+  "low_alarms":  5
+}
+```
+
+> 总览页使用此接口替代拉取全量记录/报警数据，适合数据量较大的场景。
 
 ---
 
@@ -305,4 +331,24 @@ flask run
 - 数据库文件 `instance/water.db` 不含在仓库中，首次运行 `flask db upgrade` 时自动创建
 - `instance/` 目录本身也不含在仓库中（空目录不被 Git 追踪），克隆后需手动创建，见第 5 步说明
 - `.env` 文件不含在仓库中，请根据 `.env.example` 自行创建并修改 `SECRET_KEY`
+- **`SECRET_KEY` 未在 `.env` 中设置时，系统启动时会打印警告并使用不安全的默认值，生产环境中请务必配置**
 - 本项目为本地开发环境，不适用于直接生产部署
+
+---
+
+## 主要变更记录
+
+### 事务安全修复
+`alarm_service.check_and_log_alarms` 不再内部 `commit`，commit 权统一交由调用方持有。批量写入接口现在在全部记录处理完成后一次性提交，任何一条失败均可完整回滚，不再出现部分提交的情况。
+
+### 性能优化
+- 总览页改用 `/api/stats` 聚合接口（COUNT 查询），不再拉取全量记录和报警数据
+- 水质数据列表的"超标"状态由后端通过单次 IN 查询附加 `has_alarm` 字段返回，前端不再额外请求全量报警
+
+### 安全改进
+- `showMsg` 显示服务端消息时改用 `textContent` 替代 `innerHTML`，消除 XSS 风险
+
+### 其他改进
+- 批量录入内联表格初始化改为直接异步请求监测点数据，去除了原有轮询 + 超时兜底逻辑
+- `SECRET_KEY` 未配置时启动时打印 `warnings.warn` 提示
+- 删除监测点和水质记录操作补全了错误处理，服务端报错时前端不再静默失败

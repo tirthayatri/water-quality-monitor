@@ -19,11 +19,13 @@ def create_app():
     from routes.points     import bp as points_bp
     from routes.alarms     import bp as alarms_bp
     from routes.thresholds import bp as thresholds_bp
+    from routes.stats      import bp as stats_bp
 
     app.register_blueprint(records_bp)
     app.register_blueprint(points_bp)
     app.register_blueprint(alarms_bp)
     app.register_blueprint(thresholds_bp)
+    app.register_blueprint(stats_bp)
 
     @app.route('/')
     def index():

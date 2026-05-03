@@ -1,5 +1,5 @@
 from extensions import db
-from models import WaterRecord
+from models import WaterRecord, AlarmLog
 from datetime import datetime, timezone, timedelta
 
 
@@ -43,7 +43,25 @@ def get_all_records(filters=None):
         if filters.get('turbidity_max') is not None:
             query = query.filter(WaterRecord.turbidity <= float(filters['turbidity_max']))
 
-    return [r.to_dict() for r in query.all()]
+    records = query.all()
+    if records:
+        ids = [r.id for r in records]
+        alarmed = {
+            row[0] for row in
+            db.session.query(AlarmLog.record_id)
+            .filter(AlarmLog.record_id.in_(ids))
+            .distinct()
+            .all()
+        }
+    else:
+        alarmed = set()
+
+    result = []
+    for r in records:
+        d = r.to_dict()
+        d['has_alarm'] = r.id in alarmed
+        result.append(d)
+    return result
 
 
 def get_record_by_id(record_id):
@@ -80,9 +98,8 @@ def update_record(record_id, data):
     if 'timestamp'    in data: record.timestamp    = datetime.strptime(data['timestamp'], '%Y-%m-%d %H:%M:%S')
 
     AlarmLog.query.filter_by(record_id=record_id).delete()
-    db.session.commit()
-
     check_and_log_alarms(record)
+    db.session.commit()
 
     return record.to_dict()
 

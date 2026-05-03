@@ -43,8 +43,6 @@ def check_and_log_alarms(record, thresholds=None):
                 alarm_type    = 'low'
             ))
 
-    db.session.commit()
-
 
 def get_alarms(point_id=None, indicator=None):
     query = AlarmLog.query.order_by(AlarmLog.created_at.desc())

@@ -46,6 +46,7 @@ def create_record():
 
     record = record_service.create_record(data)
     alarm_service.check_and_log_alarms(record)
+    db.session.commit()
     return jsonify(record.to_dict()), 201
 
 
