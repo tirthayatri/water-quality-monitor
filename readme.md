@@ -5,7 +5,7 @@
 [![database](https://img.shields.io/badge/database-SQLite-003B57)](https://www.sqlite.org/)
 [![license](https://img.shields.io/badge/license-MIT-brightgreen)](https://opensource.org/licenses/MIT)
 
-> 一个基于 Flask + SQLAlchemy + SQLite 的本地化河流水质监测数据管理平台，支持多监测点管理、水质数据录入与查询、超标自动报警等核心功能。
+> 一个基于 Flask + SQLAlchemy + SQLite 的本地化河流水质监测数据管理平台，支持多监测点管理、水质数据录入与查询、超标自动报警，并集成基于 scikit-learn 的"未来 24 小时综合预测"模块
 
 ---
 
@@ -17,6 +17,8 @@
 - **超标报警**：数据录入时自动与阈值比对，生成高/低超标报警日志
 - **阈值管理**：支持动态修改各指标的上下限阈值
 - **数据编辑**：修改已有水质记录时自动重新计算报警状态
+- **AI 综合预测**：基于历史数据训练RandomForest + IsolationForest + MultiOutputRegressor，输出未来 24h 告警概率、异常检测分数、下一时刻指标预测值
+- **可视化集成**：总览页 AI 预测卡片按风险等级染色；趋势曲线叠加历史染色点 + 预测虚线 + 持续超标时段红色背景带
 
 ---
 
@@ -28,7 +30,8 @@
 | 数据库 ORM | Flask-SQLAlchemy 3.x + SQLAlchemy 2.x |
 | 数据库 | SQLite |
 | 数据库迁移 | Flask-Migrate 4.x (Alembic) |
-| 前端 | 原生 HTML / CSS / JavaScript |
+| 机器学习 | scikit-learn 1.x（RandomForest / IsolationForest / MultiOutputRegressor）+ numpy + joblib |
+| 前端 | 原生 HTML / CSS / JavaScript + ECharts 5 |
 | 运行环境 | Python 3.12+ |
 
 ---
@@ -38,7 +41,7 @@
 ```
 water/
 ├── app.py                  # 应用工厂函数 create_app()
-├── config.py               # 配置类（数据库路径、外键约束等）
+├── config.py               # 配置类
 ├── extensions.py           # SQLAlchemy 实例
 ├── requirements.txt        # 依赖清单
 ├── .env.example            # 环境变量模板
@@ -51,14 +54,16 @@ water/
 │
 ├── services/               # 业务逻辑层
 │   ├── record_service.py   # 水质记录增删改查
-│   └── alarm_service.py    # 报警检测与查询
+│   ├── alarm_service.py    # 报警检测与查询
+│   └── predictor.py        # AI 综合预测：分类 + 异常检测 + 趋势回归
 │
 ├── routes/                 # 路由层（Flask Blueprint）
 │   ├── points.py           # 监测点 API
 │   ├── records.py          # 水质记录 API
 │   ├── alarms.py           # 报警日志 API
 │   ├── thresholds.py       # 阈值管理 API
-│   └── stats.py            # 统计汇总 API
+│   ├── stats.py            # 统计汇总 API
+│   └── predict.py          # AI 综合预测 API
 │
 ├── templates/
 │   └── index.html          # 前端页面
@@ -66,7 +71,13 @@ water/
 │   ├── css/style.css
 │   └── js/main.js
 │
-└── migrations/             # 数据库迁移文件（Alembic）
+├── test/
+│   └── seed.py             # 演示数据生成脚本
+│
+├── instance/               # 运行时数据目录
+│   ├── water.db            # SQLite 数据库
+│   └── predictor.pkl       # 训练完成的模型
+└── migrations/             # 数据库迁移文件
     └── versions/
         └── 4154daf5f9ed_initial_schema.py
 ```
@@ -171,29 +182,23 @@ cp .env.example .env
 
 按需修改 `.env` 中的 `SECRET_KEY`。
 
-### 5. 创建 instance 目录
-
- 在新环境克隆后需手动创建数据库所在的 `instance/` 目录：
-
- ```powershell
- # Windows PowerShell
- New-Item -ItemType Directory -Path instance
- ```
-
- ```bash
- # macOS / Linux
- mkdir instance
- ```
-
- 创建后重新执行 `flask db upgrade` 即可。
-
-### 6. 初始化数据库
+### 5. 初始化数据库
 
 ```bash
 flask db upgrade
 ```
 
 执行成功后将在 `instance/` 目录下生成 `water.db`，并初始化默认阈值
+
+### 6. 写入演示数据
+
+仓库默认带有 `instance/water.db`。如需重新生成，可在项目根目录执行：
+
+```bash
+python test/seed.py
+```
+
+> ⚠️ 该脚本会先**清空** `monitor_points / water_records / alarm_logs` 三张表再写入新数据，请确保不会覆盖正在使用的真实数据。
 
 ### 7. 启动服务
 
@@ -202,6 +207,8 @@ flask run
 ```
 
 浏览器访问 [http://127.0.0.1:5000](http://127.0.0.1:5000)
+
+> 首次打开总览页或调用 `/api/predict` 时，AI 模块会基于当前 `water.db` 自动训练并将模型缓存到 `instance/predictor.pkl`
 
 ---
 
@@ -214,7 +221,7 @@ flask run
 | GET | `/api/points` | 获取所有监测点 |
 | GET | `/api/points/<id>` | 获取单个监测点 |
 | POST | `/api/points` | 新增监测点 |
-| DELETE | `/api/points/<id>` | 删除监测点（级联删除记录和报警） |
+| DELETE | `/api/points/<id>` | 删除监测点 |
 
 **新增监测点请求体示例：**
 ```json
@@ -326,17 +333,171 @@ flask run
 
 ---
 
+### AI 综合预测 `/api/predict`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET  | `/api/predict` | 返回所有监测点的三路预测信号 |
+| GET  | `/api/predict?point_id=N` | 仅返回指定监测点 |
+| POST | `/api/predict/train` | 重新训练并返回评估指标 |
+| GET  | `/api/predict/info`  | 返回模型元数据与训练指标 |
+
+**响应示例（监测点 3）：**
+```json
+{
+  "point_id": 3,
+  "name": "监测点3",
+  "last_timestamp": "2026-05-10 04:15:46",
+  "based_on_records": 3,
+  "classification": {
+    "probability": 0.4295,
+    "risk_level": "medium"
+  },
+  "anomaly": {
+    "score": 0.5252,
+    "is_anomaly": true
+  },
+  "forecast": {
+    "next_values": {
+      "chlorine": 0.142, "conductivity": 644.0,
+      "ph": 6.93, "orp": 327.8, "turbidity": 1.48
+    },
+    "indicators_at_risk": [],
+    "max_breach_ratio": 0.0
+  }
+}
+```
+
+模型未训练时首次调用接口会自动训练。详细字段含义与阈值规则见下文 [AI 综合预测模块]。
+
+---
+
+## AI 综合预测模块
+
+总览页"AI 综合预测"卡片对每个监测点并行运行 **三个独立模型**，输出三路独立信号 + 时序图表叠加。三路信号设计上互补 —— 分歧时往往揭示不同时间尺度或不同视角下的风险。
+
+### 三路信号一览
+
+| 信号字段 | 来源模型 | 判定阈值 |
+|---|---|---|
+| `classification.probability` | RandomForestClassifier | 0–1 概率值（连续） |
+| `classification.risk_level`  | 同上                 | `≥0.50 → high`，`0.30–0.50 → medium`，`<0.30 → low` |
+| `anomaly.score`              | IsolationForest      | 0–1 异常程度（sigmoid 归一化） |
+| `anomaly.is_anomaly`         | 同上                 | `decision_function < 0` ⇔ `score > 0.5` |
+| `forecast.next_values`       | MultiOutputRegressor(RandomForestRegressor) | 5 个指标的预测数值 |
+| `forecast.indicators_at_risk`| 同上                 | 预测值越过 `thresholds` 表中对应指标的 min / max |
+| `forecast.max_breach_ratio`  | 同上                 | 预测值越界距离 / (max−min)，归一化越界程度 |
+
+### 1. 分类: 未来 24 小时告警概率
+
+- **算法**：`RandomForestClassifier`（120 棵树，深度 8，`class_weight='balanced'`）
+- **训练数据来源**：`water_records` + `alarm_logs` 表
+  - 对每条记录构造 32 维特征
+  - 标签 = 该记录之后 24 小时窗口内是否存在任意指标越界（`alarm_logs` 中是否有对应记录）
+- **判定规则**（前端卡片显示）：
+
+  | 概率区间 | risk_level | 卡片左边框 / 徽章颜色 |
+  |---|---|---|
+  | `prob ≥ 0.50` | `high`   | 红色 (#e53935) |
+  | `0.30 ≤ prob < 0.50` | `medium` | 橙色 (#f59e0b) |
+  | `prob < 0.30` | `low`    | 绿色 (#2e7d32) |
+
+  阈值取自 `services/predictor.py` 第 188 行：`'high' if prob >= 0.50 else ('medium' if prob >= 0.30 else 'low')`。
+- **诚实评估**：随机 5 折 CV ROC-AUC ≈ 0.78，PR-AUC ≈ 0.35；时间序列 5 折 CV ROC-AUC ≈ 0.58（时间外推能力弱，受异常事件稀疏性限制）
+
+### 2. 异常检测: 当前样本是否罕见
+
+- **算法**：`IsolationForest`（120 棵树，`contamination` = 训练集正样本率 ≈ 0.15）
+- **数据来源**：与分类共用同一份 32 维特征，但 **无监督训练**（不使用任何标签）
+- **`anomaly.score` 计算**：
+  ```
+  raw = iforest.decision_function(feats)        # 正数=正常, 负数=异常, 决策边界=0
+  score = 1 / (1 + exp(5 × raw))                # sigmoid 映射到 [0, 1]
+  ```
+  - `raw = 0` → `score = 0.5`（决策边界）
+  - `raw < 0` → `score → 1`（越异常）
+  - `raw > 0` → `score → 0`（越典型）
+- **`is_anomaly` 判定**：直接使用 `iforest.predict() == -1`，**等价于 `score > 0.5`**
+  - sklearn 的 `decision_function` 内部已做 `score_samples - offset_`，`offset_` 由 `contamination` 决定，因此 `raw == 0` 自然就是异常 / 正常的分界
+  - 我们的 sigmoid `1/(1+exp(5·raw))` 把 `raw=0` 映射到 0.5，所以 `score > 0.5` 与 `is_anomaly = true` 一一对应
+- **设计意图**：与分类器互补 —— 分类器学的是"过去出现告警时长什么样"，异常检测发现的是"训练数据中罕见的特征组合"，可以捕捉到从未见过的异常模式
+
+### 3. 趋势回归: 下一时刻指标值预测
+
+- **算法**：`MultiOutputRegressor(RandomForestRegressor(n_estimators=80, max_depth=8))`
+- **数据来源**：与分类共用 32 维特征，但 **目标变量改为下一条记录的 5 个指标值**（每条样本 5 维 Y）
+- **`forecast.next_values`**：模型直接输出的下一记录预测值
+- **`forecast.indicators_at_risk` 判定规则**：
+  ```
+  for each indicator in [chlorine, conductivity, ph, orp, turbidity]:
+      if predicted > thresholds[indicator].max  →  加入 at_risk
+      if predicted < thresholds[indicator].min  →  加入 at_risk
+  ```
+  阈值直接取自 `thresholds` 表（即用户在"阈值设置"页配置的值）
+- **`forecast.max_breach_ratio`**：所有越界指标中，最大归一化越界距离
+  ```
+  breach_ratio = max((pred - max) / (max - min), (min - pred) / (max - min), 0)
+  ```
+  例如阈值范围 `[0, 1000]`，预测值 1080，则 `breach_ratio = 0.08`（越界 8%）
+
+### 32 维特征工程
+
+所有三个模型共用同一份特征向量，避免训练数据漂移：
+
+| 维度 | 说明 | 数据来源 |
+|---|---|---|
+| 5 | 当前 5 个指标的瞬时值 | `water_records` 最新一条 |
+| 5 | 距阈值中点的归一化偏离 | `thresholds` 表 + 当前记录 |
+| 5 | 滑动窗口（最近 3 条）均值 | `water_records` 最近 3 条 |
+| 5 | 滑动窗口极差（max−min） | 同上 |
+| 5 | 滑动窗口斜率（last−first） | 同上 |
+| 3 | 时间编码：hour 的 sin/cos + weekday | 当前时间戳 |
+| 2 | 自身历史告警计数：过去 24h、过去 7d | `alarm_logs` (该监测点) |
+| 2 | 跨点空间联动：其他监测点过去 24h、过去 4-12h 滞后 | `alarm_logs` (其他监测点) |
+
+最后一组 "跨点滞后窗口" 对应模拟环境中"工业排放 → 下游 4-16h 延迟"的物理传导，引入后时间序列 PR-AUC 提升约 24%。
+
+### 模型生命周期
+
+- **首次训练**：第一次调用 `/api/predict` 时若 `instance/predictor.pkl` 不存在，自动触发训练
+- **手动重训**：调用 `POST /api/predict/train` 或前端"AI 综合预测"卡片右上角 `↻ 重新训练` 按钮
+- **持久化**：训练完成后 `joblib` 序列化到 `instance/predictor.pkl`（已 gitignore，不入库）
+- **缓存**：进程内字典缓存模型对象，避免每次推理重新加载
+
+### 时序图表的可视化叠加
+
+总览页"最近水质趋势"图集成了三类视觉信号：
+
+| 元素 | 数据来源 | 含义 |
+|---|---|---|
+| 绿色平滑折线 | `/api/records?point_id=N` | 历史轨迹 |
+| 绿色 ● / 红色 ● | 每条记录的 `has_alarm` 字段 | 单点正常 / 已超标 |
+| 红色半透明背景带 | 前端扫描连续 ≥ 2 条越界 | 持续超标时段（"事件级"风险，非单点抖动） |
+| 红/橙水平虚线 | `/api/thresholds` | 上限 / 下限阈值参考线 |
+| 蓝色虚线 + 蓝菱形 ◆ | `forecast.next_values[indicator]` | 24h 预测点（预测正常） |
+| 红色虚线 + 红菱形 ◆ | 同上 + `indicators_at_risk` 包含当前指标 | 24h 预测点（预测越界） |
+
+---
+
 ## 注意事项
 
-- 数据库文件 `instance/water.db` 不含在仓库中，首次运行 `flask db upgrade` 时自动创建
-- `instance/` 目录本身也不含在仓库中（空目录不被 Git 追踪），克隆后需手动创建，见第 5 步说明
+- `instance/water.db` **已随仓库提供演示数据**。如需空库可删除该文件后执行 `flask db upgrade`
+- `instance/predictor.pkl` 已通过 `*.pkl` 规则忽略，首次推理时自动训练生成，无需提交到仓库
+- `instance/` 目录已通过 `.gitkeep` 纳入版本控制，克隆后无需手动创建
 - `.env` 文件不含在仓库中，请根据 `.env.example` 自行创建并修改 `SECRET_KEY`
 - **`SECRET_KEY` 未在 `.env` 中设置时，系统启动时会打印警告并使用不安全的默认值，生产环境中请务必配置**
+- AI 预测模块的评估指标显示 **时间序列 5 折 CV ROC-AUC ≈ 0.58**，外推能力受异常事件稀疏性限制，仅作演示用途，不适用于真实业务决策
 - 本项目为本地开发环境，不适用于直接生产部署
 
 ---
 
 ## 主要变更记录
+
+### AI 综合预测模块（新增）
+- **三模型集成**：RandomForestClassifier（24h 告警概率）+ IsolationForest（无监督异常分数）+ MultiOutputRegressor(RandomForestRegressor)（下一时刻 5 指标值预测），三路独立信号互补
+- **32 维特征工程**：覆盖瞬时值、距阈值偏离、滑动窗口统计、时间编码、自身/跨监测点历史告警计数；上下游传导建模（4-12h 滞后特征）使时间序列 PR-AUC 提升约 24%
+- **诚实评估**：同时给出训练精度、随机 5 折 CV、时间序列 5 折 CV，明确标注模型外推局限
+- **API**：单一 `/api/predict` 接口返回三路信号；`/api/predict/train` 支持手动重训
 
 ### 事务安全修复
 `alarm_service.check_and_log_alarms` 不再内部 `commit`，commit 权统一交由调用方持有。批量写入接口现在在全部记录处理完成后一次性提交，任何一条失败均可完整回滚，不再出现部分提交的情况。

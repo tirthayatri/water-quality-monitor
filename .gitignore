@@ -1,12 +1,22 @@
 venv/
-instance/
+instance/*
+!instance/.gitkeep
+!instance/water.db
 __pycache__/
 *.pyc
 .env
-*.db
 .vscode/
 *.pyo
 *.pyd
 .env.*
 !.env.example
 migrations/versions/__pycache__/
+*.pkl
+
+# IDE / 系统元数据
+.idea/
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log

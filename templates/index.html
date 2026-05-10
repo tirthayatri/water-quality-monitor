@@ -289,6 +289,106 @@
             color: #e53935;
         }
 
+        /* ── AI 预测卡片 ── */
+        .pred-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .pred-card {
+            background: white;
+            border-radius: 8px;
+            padding: 14px;
+            border-left: 4px solid #888;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+            font-size: 12px;
+        }
+
+        .pred-card.risk-low    { border-left-color: #2e7d32; }
+        .pred-card.risk-medium { border-left-color: #f59e0b; }
+        .pred-card.risk-high   { border-left-color: #e53935; }
+
+        .pred-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .pred-card .name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .pred-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        .pred-row .lbl { color: #888; font-size: 11px; }
+        .pred-row .val { font-weight: 600; color: #333; font-size: 12px; }
+
+        .prob-bar {
+            height: 5px;
+            background: #f0f0f0;
+            border-radius: 3px;
+            margin: 3px 0 8px;
+            overflow: hidden;
+        }
+
+        .prob-fill {
+            height: 100%;
+            transition: width 0.3s;
+            border-radius: 3px;
+        }
+
+        .pred-section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 4px 0 12px;
+        }
+
+        .pred-section-head h2 {
+            margin: 0;
+            font-size: 16px;
+            color: #1a6b3c;
+            border-left: 4px solid #1a6b3c;
+            padding-left: 10px;
+        }
+
+        .pred-meta {
+            font-size: 11px;
+            color: #888;
+            display: flex;
+            gap: 14px;
+            align-items: center;
+        }
+
+        .chart-legend-info {
+            display: inline-flex;
+            gap: 12px;
+            font-size: 11px;
+            color: #888;
+            margin-left: 16px;
+        }
+
+        .chart-legend-info .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+
         .msg {
             padding: 10px 14px;
             border-radius: 6px;
@@ -477,9 +577,20 @@
         <!-- 总览页 -->
         <div id="page-dashboard" class="page active">
             <div class="stat-grid" id="stat-grid"></div>
+
+            <!-- AI 综合预测卡片 -->
+            <div class="pred-section-head">
+                <h2>综合预测</h2>
+                <div class="pred-meta">
+                    <span id="pred-meta-info">— 加载中 —</span>
+                    <button class="btn btn-warning btn-sm" onclick="retrainModel()">↻ 重新训练</button>
+                </div>
+            </div>
+            <div class="pred-grid" id="pred-grid"></div>
+
             <div class="card">
                 <h2>最近水质趋势</h2>
-                <div style="margin-bottom:12px;">
+                <div style="margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;">
                     <select id="chart-point" onchange="loadChart()"
                         style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;"></select>
                     <select id="chart-indicator" onchange="loadChart()"
@@ -490,6 +601,13 @@
                         <option value="orp">ORP</option>
                         <option value="turbidity">浊度</option>
                     </select>
+                    <span class="chart-legend-info">
+                        <span><span class="dot" style="background:#1a6b3c;"></span>正常</span>
+                        <span><span class="dot" style="background:#e53935;"></span>历史超标</span>
+                        <span><span class="dot" style="background:#3b82f6;"></span>24h 预测</span>
+                        <span><span class="dot" style="background:#f59e0b;"></span>预测越界</span>
+                        <span><span class="dot" style="background:rgba(229,57,53,0.25);border:1px solid rgba(229,57,53,0.5);"></span>持续超标时段</span>
+                    </span>
                 </div>
                 <div id="chart-box"></div>
             </div>
@@ -574,7 +692,7 @@
                         <thead>
                             <tr>
                                 <th style="width:30px;">#</th>
-                                <th style="width:120px;">监测点 *</th>
+                                <th style="width:120px;">监测点</th>
                                 <th style="width:148px;">采集时间</th>
                                 <th style="width:90px;">余氯 (mg/L)</th>
                                 <th style="width:100px;">电导率 (μS/cm)</th>
@@ -590,7 +708,7 @@
 
                 <div class="inline-entry-footer">
                     <button class="inline-add-row-btn" onclick="addInlineRow()">＋ 添加一行</button>
-                    <span class="inline-entry-hint">Tab 键可在单元格间快速跳转</span>
+                    <span class="inline-entry-hint">使用Tab键可在单元格间快速跳转或换行</span>
                 </div>
             </div>
 
@@ -762,7 +880,7 @@
             document.getElementById('page-' + name).classList.add('active');
             if (btn) btn.classList.add('active');
 
-            if (name === 'dashboard') { loadStats(); loadChart(); }
+            if (name === 'dashboard') { loadStats(); loadPredictions(); loadChart(); }
             if (name === 'records') loadRecords();
             if (name === 'alarms') loadAlarms();
             if (name === 'points') loadPoints();
@@ -827,9 +945,10 @@
             const indicator = document.getElementById('chart-indicator').value;
             if (!pointId) return;
 
-            const [records, thresholds] = await Promise.all([
+            const [records, thresholds, prediction] = await Promise.all([
                 api(`/api/records?point_id=${pointId}`),
-                api('/api/thresholds')
+                api('/api/thresholds'),
+                api(`/api/predict?point_id=${pointId}`).catch(() => null)
             ]);
             if (!Array.isArray(records)) return;
             const sorted = records.slice().reverse().slice(-30);
@@ -837,24 +956,180 @@
 
             const t = thresholds.find(t => t.indicator === indicator);
             const markLines = t ? {
+                silent: true,
+                symbol: 'none',
                 data: [
                     { yAxis: t.max_val, name: '上限', lineStyle: { color: '#e53935', type: 'dashed' } },
                     { yAxis: t.min_val, name: '下限', lineStyle: { color: '#f59e0b', type: 'dashed' } }
                 ]
             } : {};
 
+            // 历史数据：每个点根据 has_alarm 着色（绿=正常，红=超标）
+            const xLabels = sorted.map(r => r.timestamp.slice(5, 16));
+            const histData = sorted.map(r => ({
+                value: r[indicator],
+                itemStyle: { color: r.has_alarm ? '#e53935' : '#1a6b3c' }
+            }));
+
+            // 找出当前指标连续 ≥ 2 条越界的 "高风险时段"，渲染为红色背景带
+            const markAreaData = [];
+            if (t) {
+                const breached = sorted.map(r =>
+                    r[indicator] > t.max_val || r[indicator] < t.min_val);
+                let runStart = -1;
+                for (let i = 0; i <= breached.length; i++) {
+                    if (i < breached.length && breached[i]) {
+                        if (runStart === -1) runStart = i;
+                    } else if (runStart !== -1) {
+                        if (i - runStart >= 2) {
+                            markAreaData.push([
+                                { xAxis: xLabels[runStart], name: '高风险' },
+                                { xAxis: xLabels[i - 1] }
+                            ]);
+                        }
+                        runStart = -1;
+                    }
+                }
+            }
+
+            const series = [{
+                name: '历史',
+                type: 'line',
+                smooth: true,
+                data: histData,
+                markLine: markLines,
+                markArea: {
+                    silent: true,
+                    itemStyle: { color: 'rgba(229, 57, 53, 0.10)', borderColor: 'rgba(229,57,53,0.25)', borderWidth: 1 },
+                    label: { show: false },
+                    data: markAreaData
+                },
+                lineStyle: { color: '#1a6b3c', width: 2 },
+                symbolSize: 7
+            }];
+
+            // 24h 预测点：从最后历史点连接虚线到预测值
+            if (prediction && !prediction.error && prediction.forecast) {
+                const forecastVal = prediction.forecast.next_values?.[indicator];
+                if (forecastVal != null) {
+                    const isAtRisk = (prediction.forecast.indicators_at_risk || []).includes(indicator);
+                    const fcColor = isAtRisk ? '#e53935' : '#3b82f6';
+
+                    xLabels.push('+24h');
+                    histData.push(null);   // 历史序列在新加的位置留空
+
+                    const lastHistIdx = sorted.length - 1;
+                    const fcSeries = new Array(xLabels.length).fill(null);
+                    fcSeries[lastHistIdx] = sorted[lastHistIdx][indicator];   // 起点
+                    fcSeries[lastHistIdx + 1] = forecastVal;                  // 预测点
+
+                    series.push({
+                        name: '24h 预测',
+                        type: 'line',
+                        data: fcSeries,
+                        lineStyle: { color: fcColor, type: 'dashed', width: 2 },
+                        itemStyle: { color: fcColor },
+                        symbol: 'diamond',
+                        symbolSize: 12,
+                        z: 5
+                    });
+                }
+            }
+
             chart.setOption({
                 tooltip: { trigger: 'axis' },
-                xAxis: { type: 'category', data: sorted.map(r => r.timestamp.slice(5, 16)) },
+                legend: {
+                    data: series.map(s => s.name),
+                    right: 10, top: 0,
+                    textStyle: { fontSize: 11 }
+                },
+                grid: { top: 30, left: 50, right: 30, bottom: 30 },
+                xAxis: { type: 'category', data: xLabels, axisLabel: { fontSize: 10 } },
                 yAxis: { type: 'value', name: formatIndicator(indicator) },
-                series: [{
-                    type: 'line', smooth: true,
-                    data: sorted.map(r => r[indicator]),
-                    markLine: markLines,
-                    lineStyle: { color: '#1a6b3c' },
-                    itemStyle: { color: '#1a6b3c' }
-                }]
-            });
+                series
+            }, true);
+        }
+
+        // ── AI 预测卡片 ───────────────────────────────────────────
+        const RISK_COLOR = { low: '#2e7d32', medium: '#f59e0b', high: '#e53935' };
+        const RISK_LABEL = { low: '低风险', medium: '中风险', high: '高风险' };
+
+        async function loadPredictions() {
+            const grid = document.getElementById('pred-grid');
+            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#aaa;padding:24px;">加载预测中...</div>';
+
+            const [predictions, info] = await Promise.all([
+                api('/api/predict').catch(() => null),
+                api('/api/predict/info').catch(() => null)
+            ]);
+
+            // 显示模型元数据
+            const metaEl = document.getElementById('pred-meta-info');
+            if (info?.metrics) {
+                const m = info.metrics;
+                const auc = m.classifier?.cv_roc_auc;
+                metaEl.innerHTML = `样本 ${m.samples} · 特征 ${m.feature_count} · CV ROC-AUC ${auc ?? '—'}`;
+            } else {
+                metaEl.textContent = '模型未就绪';
+            }
+
+            if (!Array.isArray(predictions) || !predictions.length) {
+                grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#c0392b;padding:24px;">预测加载失败</div>';
+                return;
+            }
+
+            grid.innerHTML = predictions.map(p => {
+                const cls = p.classification || {};
+                const ano = p.anomaly || {};
+                const fc  = p.forecast || {};
+                const probPct = ((cls.probability ?? 0) * 100).toFixed(0);
+                const risk = cls.risk_level || 'low';
+                const fillColor = RISK_COLOR[risk];
+
+                const anomalyTxt   = ano.is_anomaly ? '⚠ 当前异常' : '✓ 正常';
+                const anomalyColor = ano.is_anomaly ? '#e53935' : '#2e7d32';
+
+                const atRisk = fc.indicators_at_risk || [];
+                const fcTxt  = atRisk.length
+                    ? '<span style="color:#e53935;">' + atRisk.map(formatIndicator).join('、') + ' 越界</span>'
+                    : '<span style="color:#2e7d32;">稳定</span>';
+
+                return `
+                <div class="pred-card risk-${risk}">
+                    <div class="pred-head">
+                        <span class="name">${p.name || ('监测点 ' + p.point_id)}</span>
+                        <span class="badge" style="background:${fillColor}22;color:${fillColor};">${RISK_LABEL[risk]}</span>
+                    </div>
+                    <div class="pred-row">
+                        <span class="lbl">24h 告警概率</span>
+                        <span class="val" style="color:${fillColor}">${probPct}%</span>
+                    </div>
+                    <div class="prob-bar">
+                        <div class="prob-fill" style="width:${probPct}%;background:${fillColor};"></div>
+                    </div>
+                    <div class="pred-row">
+                        <span class="lbl">异常检测</span>
+                        <span class="val" style="color:${anomalyColor};">${anomalyTxt} (${(ano.score ?? 0).toFixed(2)})</span>
+                    </div>
+                    <div class="pred-row">
+                        <span class="lbl">趋势预测</span>
+                        <span class="val">${fcTxt}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function retrainModel() {
+            const metaEl = document.getElementById('pred-meta-info');
+            metaEl.textContent = '训练中…';
+            try {
+                const res = await api('/api/predict/train', 'POST');
+                if (res.error) { metaEl.textContent = '训练失败: ' + res.error; return; }
+                await loadPredictions();
+                await loadChart();
+            } catch (e) {
+                metaEl.textContent = '训练失败';
+            }
         }
 
         // ── 水质数据 ───────────────────────────────────────────
@@ -1366,6 +1641,7 @@
 
         // ── 初始化 ────────────────────────────────────────────
         loadStats();
+        loadPredictions();
     </script>
 </body>
 
