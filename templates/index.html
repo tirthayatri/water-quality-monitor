@@ -583,7 +583,7 @@
                 <h2>综合预测</h2>
                 <div class="pred-meta">
                     <span id="pred-meta-info">— 加载中 —</span>
-                    <button class="btn btn-warning btn-sm" onclick="retrainModel()">↻ 重新训练</button>
+                    <button id="pred-train-btn" class="btn btn-warning btn-sm" onclick="retrainModel()">▶ 训练</button>
                 </div>
             </div>
             <div class="pred-grid" id="pred-grid"></div>
@@ -945,10 +945,14 @@
             const indicator = document.getElementById('chart-indicator').value;
             if (!pointId) return;
 
+            const aiAvailable = !(predInfoCache &&
+                                  predInfoCache.has_gpu === false &&
+                                  predInfoCache.model_ready === false);
             const [records, thresholds, prediction] = await Promise.all([
                 api(`/api/records?point_id=${pointId}`),
                 api('/api/thresholds'),
-                api(`/api/predict?point_id=${pointId}`).catch(() => null)
+                aiAvailable ? api(`/api/predict?point_id=${pointId}`).catch(() => null)
+                            : Promise.resolve(null)
             ]);
             if (!Array.isArray(records)) return;
             const sorted = records.slice().reverse().slice(-30);
@@ -1054,27 +1058,48 @@
         const RISK_COLOR = { low: '#2e7d32', medium: '#f59e0b', high: '#e53935' };
         const RISK_LABEL = { low: '低风险', medium: '中风险', high: '高风险' };
 
+        let predInfoCache = null;
+
+        function renderPredMeta(info) {
+            const metaEl = document.getElementById('pred-meta-info');
+            const btn = document.getElementById('pred-train-btn');
+            if (info?.metrics) {
+                const m = info.metrics;
+                const auc = m.classifier?.cv_roc_auc;
+                const hw  = info.has_gpu ? 'GPU' : 'CPU';
+                metaEl.innerHTML = `[${hw}] 样本 ${m.samples} · 特征 ${m.feature_count} · CV ROC-AUC ${auc ?? '—'}`;
+                if (btn) btn.textContent = '↻ 重新训练';
+            } else if (info && info.has_gpu === false) {
+                metaEl.innerHTML = '<span style="color:#f59e0b;">[CPU 模式] AI 未启用，点击「训练」启动模型</span>';
+                if (btn) btn.textContent = '▶ 训练';
+            } else {
+                metaEl.textContent = '模型未就绪';
+                if (btn) btn.textContent = '▶ 训练';
+            }
+        }
+
         async function loadPredictions() {
             const grid = document.getElementById('pred-grid');
             grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#aaa;padding:24px;">加载预测中...</div>';
 
-            const [predictions, info] = await Promise.all([
-                api('/api/predict').catch(() => null),
-                api('/api/predict/info').catch(() => null)
-            ]);
+            // 先取硬件/模型状态：CPU 且未训练时不去请求 /api/predict，避免无意义的报错
+            const info = await api('/api/predict/info').catch(() => null);
+            predInfoCache = info;
+            renderPredMeta(info);
 
-            // 显示模型元数据
-            const metaEl = document.getElementById('pred-meta-info');
-            if (info?.metrics) {
-                const m = info.metrics;
-                const auc = m.classifier?.cv_roc_auc;
-                metaEl.innerHTML = `样本 ${m.samples} · 特征 ${m.feature_count} · CV ROC-AUC ${auc ?? '—'}`;
-            } else {
-                metaEl.textContent = '模型未就绪';
+            if (info && !info.model_ready && info.has_gpu === false) {
+                grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#888;padding:24px;">' +
+                    '当前设备无独立显卡，AI 预测默认关闭。点击右上方「训练」按钮以手动启动训练。</div>';
+                return;
             }
 
+            const predictions = await api('/api/predict').catch(() => null);
+
             if (!Array.isArray(predictions) || !predictions.length) {
-                grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#c0392b;padding:24px;">预测加载失败</div>';
+                const msg = predictions && predictions.error
+                    ? predictions.error
+                    : '预测加载失败';
+                grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#c0392b;padding:24px;">${msg}</div>`;
                 return;
             }
 
@@ -1121,7 +1146,10 @@
 
         async function retrainModel() {
             const metaEl = document.getElementById('pred-meta-info');
-            metaEl.textContent = '训练中…';
+            const btn = document.getElementById('pred-train-btn');
+            const prevText = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = '训练中…'; }
+            metaEl.textContent = '训练中…(CPU 环境可能需要数十秒)';
             try {
                 const res = await api('/api/predict/train', 'POST');
                 if (res.error) { metaEl.textContent = '训练失败: ' + res.error; return; }
@@ -1129,6 +1157,8 @@
                 await loadChart();
             } catch (e) {
                 metaEl.textContent = '训练失败';
+            } finally {
+                if (btn) { btn.disabled = false; if (!btn.textContent || btn.textContent === '训练中…') btn.textContent = prevText; }
             }
         }
 

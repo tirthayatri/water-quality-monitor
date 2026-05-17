@@ -18,6 +18,7 @@
 - **阈值管理**：支持动态修改各指标的上下限阈值
 - **数据编辑**：修改已有水质记录时自动重新计算报警状态
 - **AI 综合预测**：基于历史数据训练RandomForest + IsolationForest + MultiOutputRegressor，输出未来 24h 告警概率、异常检测分数、下一时刻指标预测值
+- **硬件自适应启动**：自动探测独立显卡 —— 有 GPU 的设备首次访问总览页自动训练并启用 AI；纯 CPU 设备默认关闭 AI，由用户点击「训练」按钮按需启动，避免在弱机型上长时间阻塞
 - **可视化集成**：总览页 AI 预测卡片按风险等级染色；趋势曲线叠加历史染色点 + 预测虚线 + 持续超标时段红色背景带
 
 ---
@@ -208,7 +209,10 @@ flask run
 
 浏览器访问 [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
-> 首次打开总览页或调用 `/api/predict` 时，AI 模块会基于当前 `water.db` 自动训练并将模型缓存到 `instance/predictor.pkl`
+> **AI 模块启动策略**：
+> - **检测到独立显卡**（NVIDIA / AMD Radeon RX / Intel Arc 等）：首次打开总览页时自动训练并将模型缓存到 `instance/predictor.pkl`
+> - **仅集显 / 核显**：AI 默认关闭，总览页"综合预测"卡片显示 `[CPU 模式]` 提示；点击右上角「训练」按钮后才会启动训练，训练完成后该按钮变为「重新训练」
+> - 训练好的 `predictor.pkl` 一旦存在，后续启动会直接加载缓存，与硬件无关
 
 ---
 
@@ -339,8 +343,19 @@ flask run
 |------|------|------|
 | GET  | `/api/predict` | 返回所有监测点的三路预测信号 |
 | GET  | `/api/predict?point_id=N` | 仅返回指定监测点 |
-| POST | `/api/predict/train` | 重新训练并返回评估指标 |
-| GET  | `/api/predict/info`  | 返回模型元数据与训练指标 |
+| POST | `/api/predict/train` | 手动训练并返回评估指标 |
+| GET  | `/api/predict/info`  | 返回模型元数据 + 硬件检测结果 + 模型就绪状态 |
+
+**`/api/predict/info` 响应字段：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `window` / `horizon_hours` / `indicators` | — | 模型配置 |
+| `has_gpu` | bool | 是否检测到独立显卡 |
+| `model_ready` | bool | 模型是否已训练（缓存或磁盘可加载） |
+| `metrics` | object \| null | 训练评估指标；未训练时为 `null`（不会触发训练） |
+
+**`/api/predict` 在 CPU 设备且模型未训练时的响应：** HTTP `503` + `{"error": "...", "model_ready": false, "has_gpu": false}`
 
 **响应示例（监测点 3）：**
 ```json
@@ -368,7 +383,7 @@ flask run
 }
 ```
 
-模型未训练时首次调用接口会自动训练。详细字段含义与阈值规则见下文 [AI 综合预测模块]。
+模型未训练时：**有独立显卡**则首次调用接口自动训练；**仅 CPU** 则返回 503，由用户主动调用 `/api/predict/train` 触发。详细字段含义与阈值规则见下文 [AI 综合预测模块]。
 
 ---
 
@@ -459,9 +474,12 @@ flask run
 
 ### 模型生命周期
 
-- **首次训练**：第一次调用 `/api/predict` 时若 `instance/predictor.pkl` 不存在，自动触发训练
-- **手动重训**：调用 `POST /api/predict/train` 或前端"AI 综合预测"卡片右上角 `↻ 重新训练` 按钮
-- **持久化**：训练完成后 `joblib` 序列化到 `instance/predictor.pkl`（已 gitignore，不入库）
+- **硬件自适应启动**：第一次调用 `/api/predict` 时若 `instance/predictor.pkl` 不存在
+  - **检测到独立显卡** → 自动训练
+  - **仅 CPU** → 跳过自动训练，接口返回 503 + `model_ready: false`；前端总览页显示 `[CPU 模式] AI 未启用` 提示
+- **独立显卡探测**：优先 `nvidia-smi`；Windows 回落 `Get-CimInstance Win32_VideoController` 并按关键字过滤集显；Linux 回落 `lspci`；结果模块级缓存，整个进程生命周期只探测一次
+- **手动训练**：调用 `POST /api/predict/train` 或前端"AI 综合预测"卡片右上角按钮（首次显示「▶ 训练」，已有模型后变为「↻ 重新训练」）
+- **持久化**：训练完成后 `joblib` 序列化到 `instance/predictor.pkl`（已 gitignore，不入库）。一旦该文件存在，后续启动直接加载，与硬件无关
 - **缓存**：进程内字典缓存模型对象，避免每次推理重新加载
 
 ### 时序图表的可视化叠加
@@ -482,7 +500,7 @@ flask run
 ## 注意事项
 
 - `instance/water.db` **已随仓库提供演示数据**。如需空库可删除该文件后执行 `flask db upgrade`
-- `instance/predictor.pkl` 已通过 `*.pkl` 规则忽略，首次推理时自动训练生成，无需提交到仓库
+- `instance/predictor.pkl` 已通过 `*.pkl` 规则忽略；有独立显卡时首次推理自动训练生成，纯 CPU 设备需手动点击「训练」按钮
 - `instance/` 目录已通过 `.gitkeep` 纳入版本控制，克隆后无需手动创建
 - `.env` 文件不含在仓库中，请根据 `.env.example` 自行创建并修改 `SECRET_KEY`
 - **`SECRET_KEY` 未在 `.env` 中设置时，系统启动时会打印警告并使用不安全的默认值，生产环境中请务必配置**
@@ -492,6 +510,12 @@ flask run
 ---
 
 ## 主要变更记录
+
+### AI 模块硬件自适应启动
+- 新增独立显卡检测（`nvidia-smi` / Windows WMI / Linux `lspci`），结果模块级缓存
+- 仅 CPU 设备首次访问总览页不再阻塞自动训练；`/api/predict` 在模型未就绪时返回 503 + `model_ready`/`has_gpu`，由用户按需点击「训练」按钮启动
+- `/api/predict/info` 暴露 `has_gpu` / `model_ready`，且不再因查询元数据而隐式触发训练
+- 前端按钮文案与状态联动：未训练显示「▶ 训练」、训练中禁用并显示「训练中…」、训练完成自动切换为「↻ 重新训练」
 
 ### AI 综合预测模块（新增）
 - **三模型集成**：RandomForestClassifier（24h 告警概率）+ IsolationForest（无监督异常分数）+ MultiOutputRegressor(RandomForestRegressor)（下一时刻 5 指标值预测），三路独立信号互补

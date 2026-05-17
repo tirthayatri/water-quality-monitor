@@ -12,6 +12,9 @@
 - 跨点空间联动: 其他点过去 24h 总告警 + 4-12h 滞后告警 (2 维)
 """
 import os
+import platform
+import shutil
+import subprocess
 import joblib
 import numpy as np
 from bisect import bisect_left
@@ -39,6 +42,69 @@ MODEL_PATH = os.path.join(
 )
 
 _cache = {'pipe': None, 'iforest': None, 'regressor': None, 'metrics': None}
+_gpu_cache = None
+
+
+class ModelNotReady(Exception):
+    """AI 模型尚未训练，且当前硬件未达到自动训练条件（无独立显卡）。"""
+
+
+# ─── 硬件探测 ──────────────────────────────────────────────────────────────
+def _detect_discrete_gpu():
+    """探测系统是否有独立显卡。优先 nvidia-smi，Windows 回落 WMI，Linux 回落 lspci。"""
+    if shutil.which('nvidia-smi'):
+        try:
+            r = subprocess.run(['nvidia-smi', '-L'],
+                               capture_output=True, timeout=3, text=True)
+            if r.returncode == 0 and 'GPU' in r.stdout:
+                return True
+        except Exception:
+            pass
+
+    system = platform.system()
+    discrete_kw  = ['nvidia', 'geforce', 'rtx ', 'gtx ', 'quadro', 'tesla',
+                    'radeon rx', 'radeon pro', 'arc a']
+    integrated_kw = ['intel uhd', 'intel hd graphics', 'intel iris',
+                     'radeon(tm) graphics', 'vega 8', 'vega 11',
+                     'microsoft basic']
+
+    if system == 'Windows':
+        try:
+            r = subprocess.run(
+                ['powershell', '-NoProfile', '-Command',
+                 'Get-CimInstance Win32_VideoController | '
+                 'Select-Object -ExpandProperty Name'],
+                capture_output=True, timeout=5, text=True)
+            if r.returncode == 0:
+                for name in r.stdout.splitlines():
+                    n = name.strip().lower()
+                    if not n:
+                        continue
+                    if any(k in n for k in discrete_kw) and \
+                       not any(k in n for k in integrated_kw):
+                        return True
+        except Exception:
+            pass
+    elif system == 'Linux':
+        try:
+            r = subprocess.run(['lspci'], capture_output=True, timeout=3, text=True)
+            if r.returncode == 0:
+                for line in r.stdout.splitlines():
+                    n = line.lower()
+                    if ('vga' in n or '3d' in n) and \
+                       any(k in n for k in discrete_kw):
+                        return True
+        except Exception:
+            pass
+    return False
+
+
+def has_discrete_gpu():
+    """缓存版的独立显卡检测，避免重复 subprocess 调用。"""
+    global _gpu_cache
+    if _gpu_cache is None:
+        _gpu_cache = _detect_discrete_gpu()
+    return _gpu_cache
 
 
 # ─── 特征工程 ──────────────────────────────────────────────────────────────
@@ -234,21 +300,39 @@ def train():
     return metrics
 
 
+def _try_load_model():
+    """从内存缓存或磁盘加载模型。已加载/加载成功返回 True，否则返回 False（不会触发训练）。"""
+    if _cache['pipe'] is not None:
+        return True
+    if os.path.exists(MODEL_PATH):
+        try:
+            data = joblib.load(MODEL_PATH)
+            _cache.update({
+                'pipe':      data['pipe'],
+                'iforest':   data.get('iforest'),
+                'regressor': data.get('regressor'),
+                'metrics':   data.get('metrics'),
+            })
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def is_model_ready():
+    return _try_load_model()
+
+
 def _ensure_model():
-    if _cache['pipe'] is None:
-        if os.path.exists(MODEL_PATH):
-            try:
-                data = joblib.load(MODEL_PATH)
-                _cache.update({
-                    'pipe':      data['pipe'],
-                    'iforest':   data.get('iforest'),
-                    'regressor': data.get('regressor'),
-                    'metrics':   data.get('metrics'),
-                })
-                return
-            except Exception:
-                pass
+    """有缓存/磁盘模型则直接加载；否则仅在检测到独立显卡时才自动训练，CPU 环境抛 ModelNotReady。"""
+    if _try_load_model():
+        return
+    if has_discrete_gpu():
         train()
+    else:
+        raise ModelNotReady(
+            '当前设备未检测到独立显卡，已跳过自动训练。请在「综合预测」点击「训练」按钮以启动 AI 模型。'
+        )
 
 
 # ─── 推理 ──────────────────────────────────────────────────────────────────
@@ -313,3 +397,10 @@ def predict_for_point(point_id):
 def get_metrics():
     _ensure_model()
     return _cache.get('metrics')
+
+
+def get_metrics_if_ready():
+    """非侵入式获取模型指标：仅在模型已就绪时返回，未训练则返回 None（不会触发训练）。"""
+    if _try_load_model():
+        return _cache.get('metrics')
+    return None
